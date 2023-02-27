@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  redis:
+    build: 
+      context: timo-redis-docker/
+      dockerfile: redis_dockerfile
+    ports:
+      - "6379" # Redis port, only exposed internally
+    profiles:
+      - production
+
+  redis-dev:
+    build: 
+      context: timo-redis-docker/
+      dockerfile: redis_dev_dockerfile
+    ports:
+      - "6379:6379" # Redis port, exposed internally and externally
+      - "8001:8001" # Redis Insight Port, exposed internally and externally
+    profiles:
+      - dev
