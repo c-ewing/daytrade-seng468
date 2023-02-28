@@ -1,0 +1,14 @@
+[
+    {
+        "SYM": "APPL",
+        "numShares": 6,
+        "Price": "120.21"
+    },
+
+    {
+        "SYM":"TSLA",
+        "numShares": 2,
+        "Price": "210.23"
+    }
+
+]
