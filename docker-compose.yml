@@ -1,6 +1,7 @@
 version: "3.9"
 
 services:
+######## PRODUCTION ########
   redis:
     build: 
       context: timo-redis-docker/
@@ -10,6 +11,17 @@ services:
     profiles:
       - production
 
+  rabbitmq:
+    build: 
+      context: timo-rabbitmq-docker/
+      dockerfile: rabbitmq_dockerfile
+    ports:
+      - "5672"
+      - "15672"
+    profiles:
+      - production
+
+######## DEVELOPMENT ########
   redis-dev:
     build: 
       context: timo-redis-docker/
@@ -17,5 +29,15 @@ services:
     ports:
       - "6379:6379" # Redis port, exposed internally and externally
       - "8001:8001" # Redis Insight Port, exposed internally and externally
+    profiles:
+      - dev
+  
+  rabbitmq-dev:
+    build: 
+      context: timo-rabbitmq-docker/
+      dockerfile: rabbitmq_dockerfile
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     profiles:
       - dev
