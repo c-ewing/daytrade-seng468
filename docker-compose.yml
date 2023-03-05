@@ -4,7 +4,7 @@ services:
 ######## PRODUCTION ########
   redis:
     build: 
-      context: timo-redis-docker/
+      context: ./timo-redis-docker/
       dockerfile: redis_dockerfile
     ports:
       - "6379" # Redis port, only exposed internally
@@ -13,7 +13,7 @@ services:
 
   rabbitmq:
     build: 
-      context: timo-rabbitmq-docker/
+      context: ./timo-rabbitmq-docker/
       dockerfile: rabbitmq_dockerfile
     ports:
       - "5672"
@@ -21,10 +21,22 @@ services:
     profiles:
       - production
 
+  quote-driver:
+    build: 
+      context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
+    ports:
+      - "5672"
+    depends_on:
+      - rabbitmq
+    profiles:
+      - production
+
 ######## DEVELOPMENT ########
   redis-dev:
+    container_name: "redis"
     build: 
-      context: timo-redis-docker/
+      context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
     ports:
       - "6379:6379" # Redis port, exposed internally and externally
@@ -33,11 +45,23 @@ services:
       - dev
   
   rabbitmq-dev:
+    container_name: "rabbitmq"
     build: 
-      context: timo-rabbitmq-docker/
+      context: ./timo-rabbitmq-docker/
       dockerfile: rabbitmq_dockerfile
     ports:
       - "5672:5672"
       - "15672:15672"
+    profiles:
+      - dev
+
+  quote-driver-dev:
+    build: 
+      context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
+    ports:
+      - "5672"
+    depends_on:
+      - rabbitmq-dev
     profiles:
       - dev
