@@ -40,7 +40,10 @@ services:
     ports:
       - "5672"
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     profiles:
       - production
 
@@ -86,6 +89,9 @@ services:
     ports:
       - "5672"
     depends_on:
-      - rabbitmq-dev
+      rabbitmq-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
     profiles:
       - dev
