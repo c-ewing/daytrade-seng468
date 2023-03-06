@@ -8,6 +8,12 @@ services:
       dockerfile: redis_dockerfile
     ports:
       - "6379" # Redis port, only exposed internally
+    healthcheck:
+      test: redis-cli -a timo-daytrade-redispass-8166d5d6-d622-4b62-bfdd-8c7d1a154c2f ping | grep PONG
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - production
 
@@ -18,6 +24,12 @@ services:
     ports:
       - "5672"
       - "15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_running | grep "fully booted and running"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - production
 
@@ -41,6 +53,12 @@ services:
     ports:
       - "6379:6379" # Redis port, exposed internally and externally
       - "8001:8001" # Redis Insight Port, exposed internally and externally
+    healthcheck:
+      test: redis-cli -a timo-daytrade-redispass-8166d5d6-d622-4b62-bfdd-8c7d1a154c2f ping | grep PONG
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - dev
   
@@ -52,6 +70,12 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_running | grep "fully booted and running"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - dev
 
