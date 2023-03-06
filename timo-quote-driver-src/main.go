@@ -29,7 +29,7 @@ const QUOTE_SERVER_ADDRESS = "quoteserve.seng.uvic.ca:4444"
 
 // FUNCTIONS:
 func main() {
-	// This container should be started after the Redis and RabbitMQ containers using a healthcheck
+	// This container should be started after the Redis and RabbitMQ containers using a health check
 	// However just in case we retry connecting to Redis and RabbitMQ a few times before giving up
 
 	// First connect to Redis. If we connect to RabbitMQ before Redis we may receive requests before the driver is ready to handle them
@@ -102,16 +102,16 @@ func main() {
 			split := strings.Split(string(message.Body), " ")
 			// Check that the message is valid
 			if len(split) != 2 {
-				log.Printf(" [!] Received invalid message: %s", message.Body)
+				log.Printf(" [warn] Received invalid message: %s", message.Body)
 				continue
 			}
 			symbol, user := split[0], split[1]
-			log.Printf(" [.] Received quote request from: %s for %s", user, symbol)
+			log.Printf(" [info] Received quote request from: %s for %s", user, symbol)
 
 			// As more than  one message at a time can sit in the queue using a go routine would add unnecessary complexity
 			// If we begin accepting more than one message at a time we would need to add a goroutine to handle each message
 			quote_price := get_or_refresh_quote_price(redis_client, symbol, user)
-			log.Printf(" [.] Got quote price: %s for %s for user %s", strconv.FormatFloat(quote_price, 'f', -1, 64), symbol, user)
+			log.Printf(" [info] Got quote price: %s for %s for user %s", strconv.FormatFloat(quote_price, 'f', -1, 64), symbol, user)
 
 			// Send the quote price back to the client
 			// TODO: Add a retry loop here
@@ -130,7 +130,7 @@ func main() {
 			)
 
 			if err != nil {
-				log.Printf(" [!] Failed to send quote price: %s", err)
+				log.Panicf(" [error] Failed to send quote price: %s", err)
 			}
 
 			// Acknowledge the message to remove it from the queue now that we have sent the response
@@ -138,7 +138,7 @@ func main() {
 		}
 	}()
 
-	log.Printf(" [.] Waiting for RPC. To exit press CTRL+C")
+	log.Printf(" [info] Waiting for RPC. To exit press CTRL+C")
 	<-forever // Block forever to keep the program running while waiting for RPC requests
 }
 
@@ -152,11 +152,11 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	get_new_quote := false
 
 	if err == redis.Nil {
-		log.Printf(" [.] Quote price for %s does not exist in Redis, Falling back to Quote Server", symbol)
+		log.Printf(" [info] Quote price for %s does not exist in Redis, Falling back to Quote Server", symbol)
 		get_new_quote = true
 	} else if err != nil {
 		// TODO: Recover from this error, Retry getting the quote price from Redis
-		log.Panicf(" [!] Failed to get quote price for %s from Redis", symbol)
+		log.Panicf(" [error] Failed to get quote price for %s from Redis", symbol)
 	} else {
 		// If the value returned is empty then request the quote price from the Quote server
 		if val == "" {
@@ -169,7 +169,7 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 		val, err = query_quote_server(symbol, user)
 
 		if err != nil {
-			log.Panicf(" [!] Failed to connect to quote server: %s", err)
+			log.Panicf(" [error] Failed to connect to quote server: %s", err)
 		}
 
 		// Stash it in Redis with an expiry
@@ -177,7 +177,7 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 
 		if err != nil {
 			// TODO: Recover from this error, Retry setting the quote price from Redis
-			log.Panicf(" [!] Failed to set quote price for %s in Redis", symbol)
+			log.Panicf(" [error] Failed to set quote price for %s in Redis", symbol)
 		}
 	}
 
@@ -185,9 +185,9 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	quote_price, err := strconv.ParseFloat(val, 64)
 
 	if err != nil {
-		log.Panicf(" [!] Failed to convert quote price for %s from string to float", val)
+		log.Panicf(" [error] Failed to convert quote price for %s from string to float", val)
 	} else {
-		log.Printf(" [.] Got quote price: %s for %s from Redis", val, symbol)
+		log.Printf(" [info] Got quote price: %s for %s from Redis", val, symbol)
 	}
 
 	return quote_price
