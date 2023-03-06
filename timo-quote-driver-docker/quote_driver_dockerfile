@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.20
+
+WORKDIR /usr/src/app
+
+# pre-copy/cache go.mod for pre-downloading dependencies and only redownloading them in subsequent builds if they change
+COPY timo-quote-driver-src/go.mod timo-quote-driver-src/go.sum ./
+RUN go mod download && go mod verify
+
+COPY timo-quote-driver-src ./
+RUN go build -v -o /usr/local/bin/quote-driver ./...
+
+CMD ["quote-driver"]
