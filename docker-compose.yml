@@ -24,6 +24,12 @@ services:
     ports:
       - "5672"
       - "15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_running | grep "fully booted and running"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - production
 
@@ -51,5 +57,11 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_running | grep "fully booted and running"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
     profiles:
       - dev
