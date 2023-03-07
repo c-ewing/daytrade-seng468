@@ -29,7 +29,7 @@ function App() {
         <img src={logo} className="App-logo" alt="logo" />
       </header>
 
-      <body>
+      <div className='App-body'>
         <h2>Account Balance</h2>
         <h3>$ {accountBalance}</h3>
           <DropdownButton variant="success" id="dropdown-basic-button" title="Actions">
@@ -43,7 +43,7 @@ function App() {
           {selectedAction === 'GetStockQuote' && <GetStockQuote username={username} accountBalance={accountBalance} setBalance={setBalance}/>}
           {selectedAction === 'ManageStocks' && <ManageStocks username={username} accountBalance={accountBalance} setBalance={setBalance}/>}
           {selectedAction === 'TransactionHistory' && <TransactionHistory username={username}/>}
-      </body>
+      </div>
     </div>
     
   );

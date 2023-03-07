@@ -7,6 +7,10 @@
   pointer-events: none;
 }
 
+.App-body{
+	margin: 18px;
+}
+
 .App-header {
   background-color: white;
   min-height: 35vmin;
