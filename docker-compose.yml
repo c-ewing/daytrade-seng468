@@ -17,7 +17,7 @@ services:
     profiles:
       - production
 
-  trigger-symbols-redis:
+  trigger-symbol-redis:
     build: 
       context: ./timo-redis-docker/
       dockerfile: redis_dockerfile
@@ -67,7 +67,19 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-      trigger-symbols-redis:
+      trigger-symbol-redis:
+        condition: service_healthy
+    profiles:
+      - production
+
+  stock-watcher:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-stock-watcher-docker/stock_watcher_dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      trigger-symbol-redis:
         condition: service_healthy
     profiles:
       - production
@@ -140,6 +152,18 @@ services:
     build: 
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-trigger-driver-docker/trigger_driver_dockerfile
+    depends_on:
+      rabbitmq-dev:
+        condition: service_healthy
+      trigger-symbol-redis-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+
+  stock-watcher-dev:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-stock-watcher-docker/stock_watcher_dockerfile
     depends_on:
       rabbitmq-dev:
         condition: service_healthy
