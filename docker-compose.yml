@@ -2,7 +2,22 @@ version: "3.9"
 
 services:
 ######## PRODUCTION ########
-  redis:
+  quote-price-redis:
+    build: 
+      context: ./timo-redis-docker/
+      dockerfile: redis_dockerfile
+    ports:
+      - "6379" # Redis port, only exposed internally
+    healthcheck:
+      test: redis-cli -a timo-daytrade-redispass-8166d5d6-d622-4b62-bfdd-8c7d1a154c2f ping | grep PONG
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - production
+
+  trigger-symbols-redis:
     build: 
       context: ./timo-redis-docker/
       dockerfile: redis_dockerfile
@@ -37,25 +52,52 @@ services:
     build: 
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
-    ports:
-      - "5672"
     depends_on:
       rabbitmq:
         condition: service_healthy
-      redis:
+      quote-price-redis:
+        condition: service_healthy
+    profiles:
+      - production
+
+  trigger-driver:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-trigger-driver-docker/trigger_driver_dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      trigger-symbols-redis:
         condition: service_healthy
     profiles:
       - production
 
 ######## DEVELOPMENT ########
-  redis-dev:
-    container_name: "redis"
+  quote-price-redis-dev:
+    container_name: "quote-price-redis"
     build: 
       context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
     ports:
       - "6379:6379" # Redis port, exposed internally and externally
       - "8001:8001" # Redis Insight Port, exposed internally and externally
+    healthcheck:
+      test: redis-cli -a timo-daytrade-redispass-8166d5d6-d622-4b62-bfdd-8c7d1a154c2f ping | grep PONG
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - dev
+
+  trigger-symbol-redis-dev:
+    container_name: "trigger-symbol-redis"
+    build: 
+      context: ./timo-redis-docker/
+      dockerfile: redis_dev_dockerfile
+    ports:
+      - "6380:6379" # Redis port, exposed internally and externally
+      - "8002:8001" # Redis Insight Port, exposed internally and externally
     healthcheck:
       test: redis-cli -a timo-daytrade-redispass-8166d5d6-d622-4b62-bfdd-8c7d1a154c2f ping | grep PONG
       interval: 10s
@@ -86,12 +128,22 @@ services:
     build: 
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
-    ports:
-      - "5672"
     depends_on:
       rabbitmq-dev:
         condition: service_healthy
-      redis-dev:
+      quote-price-redis-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+
+  trigger-driver-dev:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-trigger-driver-docker/trigger_driver_dockerfile
+    depends_on:
+      rabbitmq-dev:
+        condition: service_healthy
+      trigger-symbol-redis-dev:
         condition: service_healthy
     profiles:
       - dev

@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.20
+
+WORKDIR /usr/src/app
+
+# pre-copy/cache go.mod for pre-downloading dependencies and only redownloading them in subsequent builds if they change
+COPY timo-trigger-driver-src/go.mod timo-trigger-driver-src/go.sum ./
+RUN go mod download && go mod verify
+
+COPY timo-trigger-driver-src ./
+RUN go build -v -o /usr/local/bin/trigger-driver ./...
+
+CMD ["trigger-driver"]
