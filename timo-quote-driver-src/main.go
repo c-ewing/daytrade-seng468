@@ -198,14 +198,14 @@ func query_quote_server(symbol string, user string) (string, error) {
 	conn, err := net.Dial("tcp", QUOTE_SERVER_ADDRESS)
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to connect to quote server: %s", err)
 	}
 
 	// Send the symbol and user pair to the quote server
 	_, err = conn.Write([]byte(symbol + " " + user))
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to send: %s to quote server: %s", symbol+" "+user, err)
 	}
 
 	// Read the response from the quote server
@@ -214,7 +214,7 @@ func query_quote_server(symbol string, user string) (string, error) {
 	_, err = conn.Read(response)
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to read response from quote server: %s", err)
 	}
 
 	// Tons of data returned that we don't care about, only care about the quote price
