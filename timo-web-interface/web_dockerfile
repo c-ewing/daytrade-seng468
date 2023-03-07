@@ -1,0 +1,19 @@
+FROM node:18.14.2 as build-stage
+
+COPY . /src
+
+WORKDIR /src
+
+RUN npm install
+
+RUN npm run build
+
+FROM nginx:1.21.3-alpine
+
+COPY --from=build-stage /src/build /usr/share/nginx/html
+
+# Expose port 80 to the outside world
+EXPOSE 80
+
+# Start Nginx when the container is started
+CMD ["nginx", "-g", "daemon off;"]

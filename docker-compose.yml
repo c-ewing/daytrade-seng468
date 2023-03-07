@@ -46,6 +46,16 @@ services:
         condition: service_healthy
     profiles:
       - production
+    
+  web-interface:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    ports:
+      - 80:80
+    profiles:
+      - production
+
 
 ######## DEVELOPMENT ########
   redis-dev:
@@ -93,5 +103,14 @@ services:
         condition: service_healthy
       redis-dev:
         condition: service_healthy
+    profiles:
+      - dev
+      
+  web-interface-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    ports:
+      - 80:80
     profiles:
       - dev
