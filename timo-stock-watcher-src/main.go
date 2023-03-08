@@ -104,39 +104,52 @@ func main() {
 			// Refresh the stock prices
 			log.Printf(" [info] Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
 			refresh_trigger_stock_prices(trigger_redis, rabbitmq_channel, corrId, rpc_return_queue)
-
-			// Clear the RPC return channel after use:
-			for message := range msgs {
-				// Parse the RPC return
-				symbol, price := parse_rpc_return(message.Body)
-				log.Printf(" [info] Broadcasting Stock Price Update: %s is %s", symbol, strconv.FormatFloat(price, 'f', -1, 64))
-
-				// Create a context that times out after RABBITMQ_TIMEOUT_SECONDS seconds
-				rabbitmq_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
-
-				// Broadcast the stock price update to the exchange
-				err = rabbitmq_channel.PublishWithContext(
-					rabbitmq_timeout,      // context
-					"stock_price_updates", // exchange
-					symbol,                // routing key
-					false,                 // mandatory
-					false,                 // immediate
-					amqp.Publishing{
-						ContentType: "text/plain",
-						Body:        []byte(strconv.FormatFloat(price, 'f', -1, 64)),
-					},
-				)
-
-				cancel()
-			}
+			log.Printf(" [info] Finished Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
 		}
 	}()
+
+	go price_broadcast(corrId, rabbitmq_channel, msgs)
 
 	log.Printf(" [info] Started Stock Watcher. To exit press CTRL+C")
 	<-forever // Block forever to keep the program running
 }
 
 // HELPER FUNCTIONS:
+func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan amqp.Delivery) {
+	for message := range msgs {
+		log.Printf("Here: %d", len(msgs))
+		if corrId != message.CorrelationId {
+			continue
+		}
+
+		// Parse the RPC return
+		symbol, price := parse_rpc_return(message.Body)
+		log.Printf(" [info] Broadcasting Stock Price Update: %s is %s", symbol, strconv.FormatFloat(price, 'f', -1, 64))
+
+		// Create a context that times out after RABBITMQ_TIMEOUT_SECONDS seconds
+		rabbitmq_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
+
+		// Broadcast the stock price update to the exchange
+		err := rabbitmq_channel.PublishWithContext(
+			rabbitmq_timeout,      // context
+			"stock_price_updates", // exchange
+			symbol,                // routing key
+			false,                 // mandatory
+			false,                 // immediate
+			amqp.Publishing{
+				ContentType: "text/plain",
+				Body:        []byte(strconv.FormatFloat(price, 'f', -1, 64)),
+			},
+		)
+
+		if err != nil {
+			log.Panicf("[error] Failed to publish triggered stock price update message: %s", err)
+		}
+
+		cancel()
+	}
+}
+
 func randomString(l int) string {
 	bytes := make([]byte, l)
 	for i := 0; i < l; i++ {
@@ -194,7 +207,6 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 
 		// Update the price for this symbol
 		quote_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
-		defer cancel()
 
 		// Send a message to the quote_price_requests queue to get the price for this symbol
 
@@ -217,6 +229,7 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 		if err != nil {
 			log.Panicf("[error] Failed to publish a message to the quote_price_requests queue: %s", err)
 		}
+		cancel()
 	}
 }
 
