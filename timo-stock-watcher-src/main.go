@@ -73,6 +73,10 @@ func main() {
 		nil,                   // args
 	)
 
+	if err != nil {
+		log.Panicf("[error] Failed to register a consumer: %s", err)
+	}
+
 	// Create a new Exchange to broadcast stock price updates
 	// TODO: Add a retry loop here
 	err = rabbitmq_channel.ExchangeDeclare(
