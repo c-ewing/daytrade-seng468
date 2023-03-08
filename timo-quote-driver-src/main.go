@@ -124,9 +124,9 @@ func main() {
 				false,           // immediate (true = don't send if the queue doesn't exist)
 
 				amqp.Publishing{
-					ContentType:   "text/plain",                                          // Content type of the message, ignored by RabbitMQ
-					CorrelationId: message.CorrelationId,                                 // Correlation ID of the message, used to specify who called the RPC
-					Body:          []byte(strconv.FormatFloat(quote_price, 'f', -1, 64)), // Quote price converted to string and then to bytes
+					ContentType:   "text/plain",                                                         // Content type of the message, ignored by RabbitMQ
+					CorrelationId: message.CorrelationId,                                                // Correlation ID of the message, used to specify who called the RPC
+					Body:          []byte(symbol + " " + strconv.FormatFloat(quote_price, 'f', -1, 64)), // Quote price converted to string and then to bytes
 				},
 			)
 

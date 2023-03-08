@@ -6,6 +6,8 @@ import (
 	"context"
 	"log"
 	"math/rand"
+	"strconv"
+	"strings"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -45,8 +47,8 @@ func main() {
 	rabbitmq_channel := open_channel(rabbit_connection)
 	defer rabbitmq_channel.Close()
 
-	// Create a queue if it doesn't exist already to wait for quote price requests
-	// TODO: Add a retry loop heres
+	// Create a queue if it doesn't exist already
+	// TODO: Add a retry loop here
 	rpc_return_queue, err := rabbitmq_channel.QueueDeclare(
 		"",    // name
 		false, // durable
@@ -71,6 +73,22 @@ func main() {
 		nil,                   // args
 	)
 
+	// Create a new Exchange to broadcast stock price updates
+	// TODO: Add a retry loop here
+	err = rabbitmq_channel.ExchangeDeclare(
+		"stock_price_updates", // name of the exchange
+		"direct",              // type of exchange
+		true,                  // durable
+		false,                 // delete when complete
+		false,                 // internal
+		false,                 // no-wait
+		nil,                   // arguments
+	)
+
+	if err != nil {
+		log.Panicf("[error] Failed to declare an exchange: %s", err)
+	}
+
 	// Create a ticker to trigger a refresh every PRICE_REFRESH_FREQUENCY_SECONDS seconds:
 	ticker := time.NewTicker(PRICE_REFRESH_FREQUENCY_SECONDS * time.Second)
 
@@ -88,8 +106,28 @@ func main() {
 			refresh_trigger_stock_prices(trigger_redis, rabbitmq_channel, corrId, rpc_return_queue)
 
 			// Clear the RPC return channel after use:
-			for len(msgs) > 0 {
-				<-msgs
+			for message := range msgs {
+				// Parse the RPC return
+				symbol, price := parse_rpc_return(message.Body)
+				log.Printf(" [info] Broadcasting Stock Price Update: %s is %s", symbol, strconv.FormatFloat(price, 'f', -1, 64))
+
+				// Create a context that times out after RABBITMQ_TIMEOUT_SECONDS seconds
+				rabbitmq_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
+
+				// Broadcast the stock price update to the exchange
+				err = rabbitmq_channel.PublishWithContext(
+					rabbitmq_timeout,      // context
+					"stock_price_updates", // exchange
+					symbol,                // routing key
+					false,                 // mandatory
+					false,                 // immediate
+					amqp.Publishing{
+						ContentType: "text/plain",
+						Body:        []byte(strconv.FormatFloat(price, 'f', -1, 64)),
+					},
+				)
+
+				cancel()
 			}
 		}
 	}()
@@ -109,6 +147,22 @@ func randomString(l int) string {
 
 func randInt(min int, max int) int {
 	return min + rand.Intn(max-min)
+}
+
+func parse_rpc_return(body []byte) (string, float64) {
+	s := strings.Split(string(body), " ")
+	if len(s) != 2 {
+		log.Panicf("[error] Failed to parse RPC return: %s", body)
+	}
+
+	symbol := s[0]
+	price, err := strconv.ParseFloat(s[1], 64)
+
+	if err != nil {
+		log.Panicf("[error] Failed to parse price: %s", err)
+	}
+
+	return symbol, price
 }
 
 func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel *amqp.Channel, corrId string, rpc_return_queue amqp.Queue) {
