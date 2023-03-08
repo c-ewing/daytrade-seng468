@@ -7,6 +7,7 @@ import AddFunds from './components/AddFunds'
 import GetStockQuote from './components/GetStockQuote';
 import ManageStocks from './components/ManageStocks';
 import TransactionHistory from './components/TransactionHistory';
+import FileUpload from './components/FileUpload';
 
 function App() { 
   const [accountBalance, setBalance] = useState(0);
@@ -27,9 +28,11 @@ function App() {
 
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
+      <FileUpload></FileUpload>
       </header>
 
-      <body>
+
+      <div className='App-body'>
         <h2>Account Balance</h2>
         <h3>$ {accountBalance}</h3>
           <DropdownButton variant="success" id="dropdown-basic-button" title="Actions">
@@ -43,7 +46,7 @@ function App() {
           {selectedAction === 'GetStockQuote' && <GetStockQuote username={username} accountBalance={accountBalance} setBalance={setBalance}/>}
           {selectedAction === 'ManageStocks' && <ManageStocks username={username} accountBalance={accountBalance} setBalance={setBalance}/>}
           {selectedAction === 'TransactionHistory' && <TransactionHistory username={username}/>}
-      </body>
+      </div>
     </div>
     
   );
