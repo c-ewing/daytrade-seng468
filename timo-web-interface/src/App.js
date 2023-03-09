@@ -11,7 +11,7 @@ import FileUpload from './components/FileUpload';
 
 function App() { 
   const [accountBalance, setBalance] = useState(0);
-  const username = "Ted"
+  const username = "Ted";
 
   const [selectedAction, setSelectedActions] = useState(null);
   const handleItemClick = (action) => {
