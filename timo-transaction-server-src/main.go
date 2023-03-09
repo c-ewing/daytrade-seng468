@@ -101,7 +101,7 @@ func main() {
 // Helper Functions
 func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rabbitmq_channel *amqp.Channel) {
 	for message := range msgs {
-		log.Printf("Received a command: %s", message.Body)
+		log.Printf(" [info] Received a command: %s", message.Body)
 
 		// Split the command into its parts
 		command_parts := strings.Split(string(message.Body), " ")
@@ -113,19 +113,25 @@ func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rab
 			message.Ack(false)
 		case "QUOTE":
 			response = Command_quote(command_parts, rabbitmq_channel)
-		case "BUY":
-			Command_buy(command_parts, mongo_client, rabbitmq_channel)
 			message.Ack(false)
-		// case "COMMIT_BUY":
-		// Command_commit_buy(command_parts)
-		// case "CANCEL_BUY":
-		// Command_cancel_buy(command_parts)
-		// case "SELL":
-		// Command_sell(command_parts)
-		// case "COMMIT_SELL":
-		// Command_commit_sell(command_parts)
-		// case "CANCEL_SELL":
-		// Command_cancel_sell(command_parts)
+		case "BUY":
+			response = Command_buy(command_parts, mongo_client, rabbitmq_channel)
+			message.Ack(false)
+		case "COMMIT_BUY":
+			response = Command_commit_buy(command_parts, mongo_client)
+			message.Ack(false)
+		case "CANCEL_BUY":
+			response = Command_cancel_buy(command_parts, mongo_client)
+			message.Ack(false)
+		case "SELL":
+			response = Command_sell(command_parts, mongo_client, rabbitmq_channel)
+			message.Ack(false)
+		case "COMMIT_SELL":
+			response = Command_commit_sell(command_parts, mongo_client)
+			message.Ack(false)
+		case "CANCEL_SELL":
+			response = Command_cancel_sell(command_parts, mongo_client)
+			message.Ack(false)
 		// case "SET_BUY_AMOUNT":
 		// Command_set_buy_amount(command_parts)
 		// case "SET_BUY_TRIGGER":
