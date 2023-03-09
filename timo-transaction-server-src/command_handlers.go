@@ -76,17 +76,17 @@ func Command_add(command_arguments []string, mongo_client *mongo.Client) string 
 
 // Get a quote for a stock
 // Interactions: RabbitMQ (Quote Driver)
-func Command_quote(command_arguments []string, rabbitmq_channel *amqp.Channel) (stock_price float64) {
+func Command_quote(command_arguments []string, rabbitmq_channel *amqp.Channel) string {
 	// Check to make sure the command has the correct number of arguments (Command + Stock Symbol)
 	if len(command_arguments) != 3 {
 		log.Printf("Invalid number of arguments for QUOTE command: %s", command_arguments)
-		return
+		return "error"
 	}
 
 	// Get the current stock price from the quote driver
-	stock_price = get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
+	stock_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
 
-	return
+	return strconv.FormatFloat(stock_price, 'f', -1, 64)
 }
 
 // Buy a stock

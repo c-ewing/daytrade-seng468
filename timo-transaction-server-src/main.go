@@ -91,7 +91,7 @@ func main() {
 	var forever chan struct{}
 
 	// Start a goroutine to handle messages
-	go process_messages(msgs, mongo_client)
+	go process_messages(msgs, mongo_client, rabbitmq_channel)
 
 	log.Printf(" [*] Waiting for commands. To exit press CTRL+C")
 	// Block forever
