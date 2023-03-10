@@ -8,8 +8,8 @@ def parse_file():
   for line in file :
     
     splitspace = line.split(" ")    
-    print(splitspace[1].replace(","," ")) # ADD,oY01WVirLr,63511.53 becomes ADD oY01WVirLr 63511.53
-    #send_and_print(splitspace[1].replace(","," "))
+    # print(splitspace[1].replace(","," ")) # ADD,oY01WVirLr,63511.53 becomes ADD oY01WVirLr 63511.53
+    send_and_print(splitspace[1].replace(","," "))
   
 
 

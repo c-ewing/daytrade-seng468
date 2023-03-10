@@ -137,8 +137,8 @@ func Command_buy(command_arguments []string, mongo_client *mongo.Client, rabbitm
 
 	// Get the current stock price from the quote driver
 	// TODO: Uncomment when testing in the lab
-	//quote_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
-	quote_price := 10.0
+	quote_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
+	//quote_price := 10.0
 
 	// Create a pending buy transaction in MongoDB
 	transaction := Transaction{
@@ -303,8 +303,8 @@ func Command_sell(command_arguments []string, mongo_client *mongo.Client, rabbit
 
 	// Get the current stock price from the quote driver
 	// TODO: Uncomment when testing in the lab
-	//quote_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
-	quote_price := 10.0
+	quote_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
+	// quote_price := 10.0
 
 	// Create a pending buy transaction in MongoDB
 	transaction := Transaction{
