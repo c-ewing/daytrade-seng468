@@ -44,7 +44,7 @@ services:
       interval: 10s
       timeout: 15s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     profiles:
       - production
 
@@ -95,6 +95,23 @@ services:
 
 
 ######## DEVELOPMENT ########
+  mongodb-dev:
+    container_name: "mongodb"
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - dev
+
   quote-price-redis-dev:
     container_name: "quote-price-redis"
     build: 
@@ -142,7 +159,7 @@ services:
       interval: 10s
       timeout: 15s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     profiles:
       - dev
 
@@ -188,5 +205,17 @@ services:
       dockerfile: web_dockerfile
     ports:
       - 80:80
+    profiles:
+      - dev
+
+  transaction-server-dev:
+    build:
+      context: .
+      dockerfile: ./timo-transaction-server-docker/transaction_server_dockerfile
+    depends_on:
+      mongodb-dev:
+        condition: service_healthy
+      rabbitmq-dev:
+        condition: service_healthy
     profiles:
       - dev
