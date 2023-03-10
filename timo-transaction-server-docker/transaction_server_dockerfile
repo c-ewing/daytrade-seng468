@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.20
+
+WORKDIR /usr/src/app
+
+# pre-copy/cache go.mod for pre-downloading dependencies and only redownloading them in subsequent builds if they change
+COPY timo-transaction-server-src/go.mod timo-transaction-server-src/go.sum ./
+RUN go mod download && go mod verify
+
+COPY timo-transaction-server-src ./
+RUN go build -v -o /usr/local/bin/transaction-server ./...
+
+CMD ["transaction-server"]
