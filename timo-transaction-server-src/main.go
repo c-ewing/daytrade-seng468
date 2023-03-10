@@ -101,36 +101,35 @@ func main() {
 // Helper Functions
 func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rabbitmq_channel *amqp.Channel) {
 	for message := range msgs {
-		log.Printf(" [info] Received a command: %s", message.Body)
 
 		// Split the command into its parts
 		command_parts := strings.Split(string(message.Body), " ")
-		response := ""
+		response := []byte{}
 
 		switch command_parts[0] {
 		case "ADD":
-			response = Command_add(command_parts, mongo_client)
+			response = []byte(Command_add(command_parts, mongo_client))
 			message.Ack(false)
 		case "QUOTE":
-			response = Command_quote(command_parts, rabbitmq_channel)
+			response = []byte(Command_quote(command_parts, mongo_client, rabbitmq_channel))
 			message.Ack(false)
 		case "BUY":
-			response = Command_buy(command_parts, mongo_client, rabbitmq_channel)
+			response = []byte(Command_buy(command_parts, mongo_client, rabbitmq_channel))
 			message.Ack(false)
 		case "COMMIT_BUY":
-			response = Command_commit_buy(command_parts, mongo_client)
+			response = []byte(Command_commit_buy(command_parts, mongo_client))
 			message.Ack(false)
 		case "CANCEL_BUY":
-			response = Command_cancel_buy(command_parts, mongo_client)
+			response = []byte(Command_cancel_buy(command_parts, mongo_client))
 			message.Ack(false)
 		case "SELL":
-			response = Command_sell(command_parts, mongo_client, rabbitmq_channel)
+			response = []byte(Command_sell(command_parts, mongo_client, rabbitmq_channel))
 			message.Ack(false)
 		case "COMMIT_SELL":
-			response = Command_commit_sell(command_parts, mongo_client)
+			response = []byte(Command_commit_sell(command_parts, mongo_client))
 			message.Ack(false)
 		case "CANCEL_SELL":
-			response = Command_cancel_sell(command_parts, mongo_client)
+			response = []byte(Command_cancel_sell(command_parts, mongo_client))
 			message.Ack(false)
 		// case "SET_BUY_AMOUNT":
 		// Command_set_buy_amount(command_parts)
@@ -144,10 +143,12 @@ func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rab
 		// Command_set_sell_trigger(command_parts)
 		// case "CANCEL_SET_SELL":
 		// Command_cancel_set_sell(command_parts)
-		// case "DUMPLOG":
-		// Command_dumplog(command_parts)
-		// case "DISPLAY_SUMMARY":
-		// Command_display_summary(command_parts)
+		case "DUMPLOG":
+			response = []byte(Command_dumplog(command_parts, mongo_client))
+			message.Ack(false)
+		case "DISPLAY_SUMMARY":
+			response = []byte(Command_display_summary(command_parts, mongo_client))
+			message.Ack(false)
 
 		default:
 			log.Printf("Unknown command: %s in message: %s", command_parts[0], message.Body)
@@ -156,7 +157,7 @@ func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rab
 		// If there is a response, send it back to the client
 		response_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
 
-		if response != "" {
+		if len(response) != 0 {
 			// Publish the response to the response queue
 			err := rabbitmq_channel.PublishWithContext(
 				response_timeout, // context
@@ -167,7 +168,7 @@ func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rab
 				amqp.Publishing{
 					ContentType:   "text/plain",
 					CorrelationId: message.CorrelationId,
-					Body:          []byte(response),
+					Body:          response,
 				})
 
 			if err != nil {

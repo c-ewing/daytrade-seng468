@@ -44,7 +44,7 @@ services:
       interval: 10s
       timeout: 15s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     profiles:
       - production
 
@@ -159,7 +159,7 @@ services:
       interval: 10s
       timeout: 15s
       retries: 5
-      start_period: 15s
+      start_period: 20s
     profiles:
       - dev
 

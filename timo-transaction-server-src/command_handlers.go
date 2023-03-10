@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"strconv"
@@ -22,16 +24,19 @@ import (
 func Command_add(command_arguments []string, mongo_client *mongo.Client) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid + Amount)
 	if len(command_arguments) != 3 {
-		log.Printf("Invalid number of arguments for ADD command: %s", command_arguments)
+		e := "Invalid number of arguments for ADD command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Parse the amount to add to the account
 	amount, err := strconv.ParseFloat(command_arguments[2], 64)
 	if err != nil {
-		log.Printf("Error parsing amount to add to account: %s", err)
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, err.Error(), mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", amount, mongo_client)
 
 	// Update the user's account in MongoDB
 	update_user := true
@@ -40,7 +45,8 @@ func Command_add(command_arguments []string, mongo_client *mongo.Client) string 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// No user found, create one
-			log.Printf(" [info] User %s not found, creating a new account", command_arguments[1])
+			inf := "Creating new user " + command_arguments[1]
+			Log_debug_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", amount, inf, mongo_client)
 
 			// Create a new user
 			user = User{
@@ -56,7 +62,8 @@ func Command_add(command_arguments []string, mongo_client *mongo.Client) string 
 			// Set the update_user flag to false so we don't try to update the user if they are newly created
 			update_user = false
 		} else {
-			log.Printf("Error querying database for user %s: %s", command_arguments[1], err)
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", amount, e, mongo_client)
 			return "error"
 		}
 	}
@@ -69,19 +76,22 @@ func Command_add(command_arguments []string, mongo_client *mongo.Client) string 
 
 	// Write back to the database
 	upsert_user_account(user, mongo_client)
+	Log_account_transaction("TransactionServer-1", int64(randInt(0, 1000)), "ADD", user.Userid, user.Account_balance, mongo_client)
 
-	log.Printf(" [info] Added $%f to user %s's account", amount, command_arguments[1])
 	return "success"
 }
 
 // Get a quote for a stock
 // Interactions: RabbitMQ (Quote Driver)
-func Command_quote(command_arguments []string, rabbitmq_channel *amqp.Channel) string {
-	// Check to make sure the command has the correct number of arguments (Command + Stock Symbol)
+func Command_quote(command_arguments []string, mongo_client *mongo.Client, rabbitmq_channel *amqp.Channel) string {
+	// Check to make sure the command has the correct number of arguments (Command + Userid + Stock Symbol)
 	if len(command_arguments) != 3 {
-		log.Printf("Invalid number of arguments for QUOTE command: %s", command_arguments)
+		e := "Invalid number of arguments for QUOTE command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, mongo_client)
 
 	// Get the current stock price from the quote driver
 	stock_price := get_stock_price(command_arguments[1], command_arguments[2], rabbitmq_channel)
@@ -94,15 +104,20 @@ func Command_quote(command_arguments []string, rabbitmq_channel *amqp.Channel) s
 func Command_buy(command_arguments []string, mongo_client *mongo.Client, rabbitmq_channel *amqp.Channel) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid + Stock Symbol + Amount)
 	if len(command_arguments) != 4 {
-		log.Printf(" [error] Invalid number of arguments for BUY command: %s", command_arguments)
+		e := "Invalid number of arguments for BUY command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Parse the buy_amount to buy
 	buy_amount, err := strconv.ParseFloat(command_arguments[3], 64)
 	if err != nil {
-		log.Panicf(" [error] Error parsing amount to buy: %s", err)
+		e := "Error parsing amount: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, e, mongo_client)
+		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", buy_amount, mongo_client)
 
 	// Check if the user exists
 	user, err := get_user_account(command_arguments[1], mongo_client)
@@ -110,10 +125,12 @@ func Command_buy(command_arguments []string, mongo_client *mongo.Client, rabbitm
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// No user found, can't buy anything
-			log.Printf(" [warn] User %s not found, %s action is invalid unless an account exists", command_arguments[1], command_arguments[0])
+			warn := "User " + command_arguments[1] + " not found, " + command_arguments[0] + "action is invalid unless an account exists"
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", buy_amount, warn, mongo_client)
 			return "error"
 		} else {
-			log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", buy_amount, e, mongo_client)
 			return "error"
 		}
 	}
@@ -141,9 +158,9 @@ func Command_buy(command_arguments []string, mongo_client *mongo.Client, rabbitm
 	}
 
 	upsert_transaction(transaction, mongo_client)
-	log.Printf(" [info] Created pending BUY transaction for user %s for %s of amount %f", user.Userid, command_arguments[2], buy_amount)
-	return "success"
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], user.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 
+	return "success"
 }
 
 // Confirm the last Buy action
@@ -151,21 +168,26 @@ func Command_buy(command_arguments []string, mongo_client *mongo.Client, rabbitm
 func Command_commit_buy(command_arguments []string, mongo_client *mongo.Client) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid)
 	if len(command_arguments) != 2 {
-		log.Printf(" [error] Invalid number of arguments for COMMIT_BUY command: %s", command_arguments)
+		e := "Invalid number of arguments for COMMIT_BUY command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
 
 	// Get the last BUY transaction for the user
 	transaction, err := get_last_transaction(command_arguments[1], "BUY", mongo_client)
 
 	if err != nil {
-		log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+		e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Make sure the transaction is not an empty transaction
 	if transaction.Userid == "" {
-		log.Printf(" [warn] No pending BUY transaction for user %s", command_arguments[1])
+		e := "No pending BUY transaction for user " + command_arguments[1]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
@@ -175,16 +197,19 @@ func Command_commit_buy(command_arguments []string, mongo_client *mongo.Client) 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// No user found, can't buy anything
-			log.Printf(" [warn] User %s not found, %s action is invalid unless an account exists", command_arguments[1], command_arguments[0])
+			warn := "User " + command_arguments[1] + " not found, " + command_arguments[0] + "action is invalid unless an account exists"
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, warn, mongo_client)
 			return "error"
 		} else {
-			log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 			return "error"
 		}
 	}
 
 	if user.Account_balance < transaction.Transaction_amount {
-		log.Printf(" [warn] User %s does not have enough money to buy %f$ of %s", command_arguments[1], transaction.Transaction_amount, command_arguments[2])
+		e := "User " + command_arguments[1] + " does not have enough money to buy " + fmt.Sprintf("%f", transaction.Transaction_amount) + " of " + command_arguments[2]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], transaction.Stock_symbol, "", transaction.Transaction_amount, e, mongo_client)
 		return "error"
 	}
 
@@ -192,14 +217,14 @@ func Command_commit_buy(command_arguments []string, mongo_client *mongo.Client) 
 	user.Account_balance -= transaction.Transaction_amount
 	user.Owned_stocks[transaction.Stock_symbol] += transaction.Stock_units
 
-	// TODO: Log the transaction in mongo
-
 	// Update the user's account in MongoDB
 	upsert_user_account(user, mongo_client)
+	Log_account_transaction("TransactionServer-1", int64(randInt(0, 1000)), "REMOVE", user.Userid, transaction.Transaction_amount, mongo_client)
 	// Update the transaction in MongoDB
 	transaction.Transaction_completed = true
 	transaction.Transaction_completed_timestamp = time.Now()
 	upsert_transaction(transaction, mongo_client)
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], user.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 
 	return "success"
 }
@@ -209,21 +234,26 @@ func Command_commit_buy(command_arguments []string, mongo_client *mongo.Client) 
 func Command_cancel_buy(command_arguments []string, mongo_client *mongo.Client) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid)
 	if len(command_arguments) != 2 {
-		log.Printf(" [error] Invalid number of arguments for CANCEL_BUY command: %s", command_arguments)
+		e := "Invalid number of arguments for CANCEL_BUY command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
 
 	// Get the last BUY transaction for the user
 	transaction, err := get_last_transaction(command_arguments[1], "BUY", mongo_client)
 
 	if err != nil {
-		log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+		e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Make sure the transaction is not an empty transaction
 	if transaction.Userid == "" {
-		log.Printf(" [warn] No pending BUY transaction for user %s", command_arguments[1])
+		warn := "No pending BUY transaction for user " + command_arguments[1]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, warn, mongo_client)
 		return "error"
 	}
 
@@ -231,6 +261,7 @@ func Command_cancel_buy(command_arguments []string, mongo_client *mongo.Client) 
 	transaction.Transaction_cancelled = true
 	transaction.Transaction_completed_timestamp = time.Now()
 	upsert_transaction(transaction, mongo_client)
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 
 	return "success"
 }
@@ -240,26 +271,32 @@ func Command_cancel_buy(command_arguments []string, mongo_client *mongo.Client) 
 func Command_sell(command_arguments []string, mongo_client *mongo.Client, rabbitmq_channel *amqp.Channel) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid + Stock Symbol + Amount)
 	if len(command_arguments) != 4 {
-		log.Printf(" [error] Invalid number of arguments for SELL command: %s", command_arguments)
+		e := "Invalid number of arguments for SELL command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Parse the sell_amount to buy
 	sell_amount, err := strconv.ParseFloat(command_arguments[3], 64)
 	if err != nil {
-		log.Panicf(" [error] Error parsing amount to sell: %s", err)
+		e := "Error parsing amount: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, e, mongo_client)
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", sell_amount, mongo_client)
 
 	// Check if the user exists
 	user, err := get_user_account(command_arguments[1], mongo_client)
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			// No user found, can't sell anything
-			log.Printf(" [warn] User %s not found, %s action is invalid unless an account exists", command_arguments[1], command_arguments[0])
+			// No user found, can't buy anything
+			warn := "User " + command_arguments[1] + " not found, " + command_arguments[0] + "action is invalid unless an account exists"
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", sell_amount, warn, mongo_client)
 			return "error"
 		} else {
-			log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", sell_amount, e, mongo_client)
 			return "error"
 		}
 	}
@@ -287,7 +324,7 @@ func Command_sell(command_arguments []string, mongo_client *mongo.Client, rabbit
 	}
 
 	upsert_transaction(transaction, mongo_client)
-	log.Printf(" [info] Created pending SELL transaction for user %s for %s of amount %f", user.Userid, command_arguments[2], sell_amount)
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 	return "success"
 }
 
@@ -296,21 +333,26 @@ func Command_sell(command_arguments []string, mongo_client *mongo.Client, rabbit
 func Command_commit_sell(command_arguments []string, mongo_client *mongo.Client) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid)
 	if len(command_arguments) != 2 {
-		log.Printf(" [error] Invalid number of arguments for COMMIT_SELL command: %s", command_arguments)
+		e := "Invalid number of arguments for COMMIT_SELL command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
 
 	// Get the last BUY transaction for the user
 	transaction, err := get_last_transaction(command_arguments[1], "SELL", mongo_client)
 
 	if err != nil {
-		log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+		e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Make sure the transaction is not an empty transaction
 	if transaction.Userid == "" {
-		log.Printf(" [warn] No pending SELL transaction for user %s", command_arguments[1])
+		e := "No pending SELL transaction for user " + command_arguments[1]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
@@ -320,16 +362,19 @@ func Command_commit_sell(command_arguments []string, mongo_client *mongo.Client)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// No user found, can't buy anything
-			log.Printf(" [warn] User %s not found, %s action is invalid unless an account exists", command_arguments[1], command_arguments[0])
+			warn := "User " + command_arguments[1] + " not found, " + command_arguments[0] + "action is invalid unless an account exists"
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, warn, mongo_client)
 			return "error"
 		} else {
-			log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, e, mongo_client)
 			return "error"
 		}
 	}
 
 	if user.Owned_stocks[transaction.Stock_symbol] < transaction.Stock_units {
-		log.Printf(" [warn] User %s does not have stocks to sell %f$ of %s", command_arguments[1], transaction.Transaction_amount, command_arguments[2])
+		e := "User " + command_arguments[1] + " does not have enough money to sell " + fmt.Sprintf("%f", transaction.Transaction_amount) + " of " + command_arguments[2]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], user.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, e, mongo_client)
 		return "error"
 	}
 
@@ -337,14 +382,15 @@ func Command_commit_sell(command_arguments []string, mongo_client *mongo.Client)
 	user.Account_balance += transaction.Transaction_amount
 	user.Owned_stocks[transaction.Stock_symbol] -= transaction.Stock_units
 
-	// TODO: Log the transaction in mongo
-
 	// Update the user's account in MongoDB
 	upsert_user_account(user, mongo_client)
+	Log_account_transaction("TransactionServer-1", int64(randInt(0, 1000)), "ADD", user.Userid, transaction.Transaction_amount, mongo_client)
+
 	// Update the transaction in MongoDB
 	transaction.Transaction_completed = true
 	transaction.Transaction_completed_timestamp = time.Now()
 	upsert_transaction(transaction, mongo_client)
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 
 	return "success"
 }
@@ -354,21 +400,26 @@ func Command_commit_sell(command_arguments []string, mongo_client *mongo.Client)
 func Command_cancel_sell(command_arguments []string, mongo_client *mongo.Client) string {
 	// Check to make sure the command has the correct number of arguments (Command + Userid)
 	if len(command_arguments) != 2 {
-		log.Printf(" [error] Invalid number of arguments for CANCEL_SELL command: %s", command_arguments)
+		e := "Invalid number of arguments for CANCEL_SELL command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
 		return "error"
 	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
 
 	// Get the last SELL transaction for the user
 	transaction, err := get_last_transaction(command_arguments[1], "SELL", mongo_client)
 
 	if err != nil {
-		log.Printf(" [error] Error querying database for user %s: %s", command_arguments[1], err)
+		e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
 	// Make sure the transaction is not an empty transaction
 	if transaction.Userid == "" {
-		log.Printf(" [warn] No pending SELL transaction for user %s", command_arguments[1])
+		e := "No pending SELL transaction for user " + command_arguments[1]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
 		return "error"
 	}
 
@@ -376,6 +427,7 @@ func Command_cancel_sell(command_arguments []string, mongo_client *mongo.Client)
 	transaction.Transaction_cancelled = true
 	transaction.Transaction_completed_timestamp = time.Now()
 	upsert_transaction(transaction, mongo_client)
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, mongo_client)
 
 	return "success"
 }
@@ -418,14 +470,82 @@ func Command_cancel_set_sell() {
 
 // Dump a logfile, can be for a specific user or all users depending on arguments
 // Interactions: MongoDB
-func Command_dumplog() {
-	log.Println("Unimplemented command: DUMPLOG")
+func Command_dumplog(command_arguments []string, mongo_client *mongo.Client) (xml []byte) {
+	// Check to make sure the command has the correct number of arguments (Command + [Userid])
+	if !(len(command_arguments) == 1 || len(command_arguments) == 2) {
+		e := "Invalid number of arguments for DUMPLOG command: " + strings.Join(command_arguments, " ")
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
+		return []byte("error")
+	}
+
+	err := error(nil)
+
+	// Get all logs from MongoDB, or just the logs for a specific user
+	if len(command_arguments) == 1 {
+		Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, mongo_client)
+		xml, err = Get_logs("", mongo_client)
+
+		if err != nil {
+			e := "Error querying database for logs: " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
+			return []byte("error")
+		}
+		Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, mongo_client)
+	} else {
+		Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
+		xml, err = Get_logs(command_arguments[1], mongo_client)
+
+		if err != nil {
+			e := "Error querying database for logs: " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
+			return []byte("error")
+		}
+		Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
+	}
+
+	return xml
 }
 
 // Display a summary of a current user's account
 // Interactions: MongoDB
-func Command_display_summary() {
-	log.Println("Unimplemented command: DISPLAY_SUMMARY")
+func Command_display_summary(command_arguments []string, mongo_client *mongo.Client) string {
+	// Check to make sure the command has the correct number of arguments (Command + Userid)
+	if len(command_arguments) != 2 {
+		e := "Invalid number of arguments for DISPLAY_SUMMARY command: " + command_arguments[0]
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], "", "", "", 0, e, mongo_client)
+		return "error"
+	}
+
+	Log_user_command("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
+
+	// Get the user account from MongoDB
+	user, err := get_user_account(command_arguments[1], mongo_client)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// No user found, can't display anything
+			warn := "User " + command_arguments[1] + " not found, " + command_arguments[0] + "action is invalid unless an account exists"
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, warn, mongo_client)
+			return "error"
+		} else {
+			e := "Error querying database for user " + command_arguments[1] + ": " + err.Error()
+			Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], command_arguments[2], "", 0, e, mongo_client)
+			return "error"
+		}
+	}
+
+	// JSONify the user account
+	user_json, err := json.Marshal(user)
+	if err != nil {
+		e := "Error marshalling user account to JSON: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, e, mongo_client)
+		return "error"
+	}
+
+	Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), command_arguments[0], command_arguments[1], "", "", 0, mongo_client)
+
+	// Return the JSON
+	return string(user_json)
 }
 
 // HELPER FUNCTIONS:
@@ -510,7 +630,7 @@ func get_user_account(userid string, mongo_client *mongo.Client) (User, error) {
 }
 
 func get_last_transaction(userid string, transaction_type string, mongo_client *mongo.Client) (Transaction, error) {
-	log.Printf(" [info] Fetching last %s transaction for user %s", transaction_type, userid)
+	Log_debug_event("TransactionServer-1", int64(randInt(0, 1000)), "DISPLAY_SUMMARY", userid, "", "", 0, "Fetching last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD", mongo_client)
 	// Fetch the users current information from the database
 	user_transactions := mongo_client.Database("users").Collection("transactions")
 	filter := bson.M{"userid": userid, "transaction_type": transaction_type, "transaction_completed": false, "transaction_cancelled": false, "transaction_expired": false}
@@ -520,7 +640,8 @@ func get_last_transaction(userid string, transaction_type string, mongo_client *
 	// Query for the user using the user id
 	cursor, err := user_transactions.Find(context.Background(), filter, opts)
 	if err != nil {
-		log.Printf(" [error] Error querying for user %s's last transaction: %s", userid, err)
+		e := "Error querying for user " + userid + "'s last transaction: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), "", userid, "", "", 0, e, mongo_client)
 		return Transaction{}, err
 	}
 
@@ -528,7 +649,8 @@ func get_last_transaction(userid string, transaction_type string, mongo_client *
 	err = cursor.All(context.Background(), &transactions)
 
 	if err != nil {
-		log.Printf(" [error] Error decoding user %s's last transaction: %s", userid, err)
+		e := "Error decoding user " + userid + "'s last transaction: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), "", userid, "", "", 0, e, mongo_client)
 		return Transaction{}, err
 	}
 
@@ -536,17 +658,18 @@ func get_last_transaction(userid string, transaction_type string, mongo_client *
 	for i, transaction := range transactions {
 		if time.Since(transaction.Transaction_start_timestamp).Seconds() > 60 {
 			// Expire the transaction
-			log.Printf(" [info] Expiring transaction '%d' for user %s", transaction.Transaction_number, userid)
 			transactions[i].Transaction_expired = true
 			transactions[i].Transaction_completed = false
 			transactions[i].Transaction_cancelled = false
 			upsert_transaction(transactions[i], mongo_client)
+			Log_system_event("TransactionServer-1", int64(randInt(0, 1000)), "EXPIRE", transactions[i].Userid, transactions[i].Stock_symbol, "", transactions[i].Transaction_amount, mongo_client)
 		}
 	}
 
 	// Return the first not expired transaction
 	for _, transaction := range transactions {
 		if !transaction.Transaction_expired {
+			Log_debug_event("TransactionServer-1", int64(randInt(0, 1000)), "DISPLAY_SUMMARY", userid, "", "", 0, "Returning last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD", mongo_client)
 			return transaction, nil
 		}
 	}
@@ -565,10 +688,11 @@ func upsert_user_account(user User, mongo_client *mongo.Client) {
 	_, err := user_accounts.UpdateOne(context.Background(), filter, bson.D{{Key: "$set", Value: user}}, options)
 
 	if err != nil {
-		log.Panicf(" [error] Error updating user %s's account: %s", user.Userid, err)
+		e := "Error updating user " + user.Userid + "'s account: " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), "", user.Userid, "", "", 0, e, mongo_client)
+		panic(err)
 	}
 
-	log.Printf(" [info] Updated/Created user: %s ", user.Userid)
 }
 
 func upsert_transaction(transaction Transaction, mongo_client *mongo.Client) {
@@ -582,10 +706,12 @@ func upsert_transaction(transaction Transaction, mongo_client *mongo.Client) {
 	_, err := transactions.UpdateOne(context.Background(), filter, bson.D{{Key: "$set", Value: transaction}}, options)
 
 	if err != nil {
-		log.Panicf(" [error] Error updating transaction %s,%d record: %s", transaction.Userid, transaction.Transaction_number, err)
+		e := "Error updating transaction " + transaction.Userid + "," + strconv.Itoa(int(transaction.Transaction_number)) + ": " + err.Error()
+		Log_error_event("TransactionServer-1", int64(randInt(0, 1000)), transaction.Transaction_type, transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, e, mongo_client)
+		panic(err)
 	}
 
-	log.Printf(" [info] Updated/Created Transaction: %d", transaction.Transaction_number)
+	Log_debug_event("TransactionServer-1", int64(randInt(0, 1000)), transaction.Transaction_type, transaction.Userid, transaction.Stock_symbol, "", transaction.Transaction_amount, "Updated/Created transaction: "+strconv.Itoa(int(transaction.Transaction_number)), mongo_client)
 }
 
 func parse_rpc_return(body []byte) (string, float64) {
@@ -618,28 +744,28 @@ func randInt(min int, max int) int {
 
 // DATABASE STRUCTS:
 type User struct {
-	Userid                      string             `bson:"_id"`
-	Account_balance             float64            `bson:"account_balance"`
-	Account_creation_timestamp  time.Time          `bson:"account_creation_timestamp"`
-	Last_modification_timestamp time.Time          `bson:"last_modification_timestamp"`
-	Owned_stocks                map[string]float64 `bson:"owned_stocks"`
-	Stock_buy_triggers          map[string]float64 `bson:"stock_buy_triggers"`
-	Stock_sell_triggers         map[string]float64 `bson:"stock_sell_triggers"`
+	Userid                      string             `bson:"_id" json:"userid"`
+	Account_balance             float64            `bson:"account_balance" json:"account_balance"`
+	Account_creation_timestamp  time.Time          `bson:"account_creation_timestamp" json:"account_creation_timestamp"`
+	Last_modification_timestamp time.Time          `bson:"last_modification_timestamp" json:"last_modification_timestamp"`
+	Owned_stocks                map[string]float64 `bson:"owned_stocks" json:"owned_stocks"`
+	Stock_buy_triggers          map[string]float64 `bson:"stock_buy_triggers" json:"stock_buy_triggers"`
+	Stock_sell_triggers         map[string]float64 `bson:"stock_sell_triggers" json:"stock_sell_triggers"`
 }
 
 type Transaction struct {
-	Transaction_number              int64     `bson:"transaction_number"`
-	Userid                          string    `bson:"userid"`
-	Transaction_start_timestamp     time.Time `bson:"transaction_start_timestamp"`
-	Transaction_completed_timestamp time.Time `bson:"transaction_completed_timestamp"`
-	Transaction_cancelled           bool      `bson:"transaction_cancelled"`
-	Transaction_completed           bool      `bson:"transaction_completed"`
-	Transaction_expired             bool      `bson:"transaction_expired"`
-	Transaction_type                string    `bson:"transaction_type"`
-	Transaction_amount              float64   `bson:"transaction_amount,omitempty"`
-	Stock_symbol                    string    `bson:"stock_symbol,omitempty"`
-	Stock_units                     float64   `bson:"stock_units,omitempty"`
-	Trigger_price                   float64   `bson:"trigger_point,omitempty"`
-	Quote_price                     float64   `bson:"quote_price,omitempty"`
-	Quote_timestamp                 time.Time `bson:"quote_timestamp,omitempty"`
+	Transaction_number              int64     `bson:"transaction_number" json:"transaction_number"`
+	Userid                          string    `bson:"userid" json:"userid"`
+	Transaction_start_timestamp     time.Time `bson:"transaction_start_timestamp" json:"transaction_start_timestamp"`
+	Transaction_completed_timestamp time.Time `bson:"transaction_completed_timestamp" json:"transaction_completed_timestamp"`
+	Transaction_cancelled           bool      `bson:"transaction_cancelled" json:"transaction_cancelled"`
+	Transaction_completed           bool      `bson:"transaction_completed" json:"transaction_completed"`
+	Transaction_expired             bool      `bson:"transaction_expired" json:"transaction_expired"`
+	Transaction_type                string    `bson:"transaction_type" json:"transaction_type"`
+	Transaction_amount              float64   `bson:"transaction_amount,omitempty" json:"transaction_amount"`
+	Stock_symbol                    string    `bson:"stock_symbol,omitempty" json:"stock_symbol"`
+	Stock_units                     float64   `bson:"stock_units,omitempty" json:"stock_units"`
+	Trigger_price                   float64   `bson:"trigger_point,omitempty" json:"trigger_point"`
+	Quote_price                     float64   `bson:"quote_price,omitempty" json:"quote_price"`
+	Quote_timestamp                 time.Time `bson:"quote_timestamp,omitempty" json:"quote_timestamp"`
 }
