@@ -1,21 +1,31 @@
 import Form from "react-bootstrap/Form"
 import Button from "react-bootstrap/Button"
 import { useState } from "react"
-import rabbit from 'rabbit.js';
+
+const ampq = require('amqplib/callback_api');
 
 const sendOperationFile = (msg) => {
   //TODO: Add connection to Rabbit
-  const context = rabbit.createContext('ws://localhost:15674/ws');
+  ampq.connect('connection here', (err, connection) => {
+    if (err) {
+      throw err;
+    }
+    connection.createChannel((err, channel) => {
+      if (err) {
+        throw err;
+      }
 
-  // Create a socket
-  const socket = context.socket('PUSH');
+      // TODO: Change queue name
+      let queueName = "operation_queue";
 
-  // Connect to a queue
-  socket.connect('my_queue', () => {
-    // Send a message
-    socket.write('Hello, world!');
-  });
-  
+      channel.assertQueue(queueName,  {
+        durable: false
+      });
+
+      channel.sendToQueue(queueName, Buffer.from(msg));
+    })
+  }
+  )
 }
 
 function FileUpload(props) {

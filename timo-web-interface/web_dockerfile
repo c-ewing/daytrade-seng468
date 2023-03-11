@@ -1,8 +1,8 @@
 FROM node:18.14.2 as build-stage
 
-COPY . /src
+COPY . ./src
 
-WORKDIR /src
+WORKDIR ./src
 
 RUN npm install
 
