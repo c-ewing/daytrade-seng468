@@ -18,7 +18,7 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-const REDIS_CONNECTION_ADDRESS = "redis:6379"
+const REDIS_CONNECTION_ADDRESS = "quote-price-redis:6379"
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
 
@@ -26,6 +26,7 @@ const RABBITMQ_CONNECTION_STRING = "amqp://guest:guest@rabbitmq:5672/"
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 const QUOTE_SERVER_ADDRESS = "quoteserve.seng.uvic.ca:4444"
+const QUOTE_SERVER_TIMEOUT_SECONDS = 2
 
 // FUNCTIONS:
 func main() {
@@ -123,9 +124,9 @@ func main() {
 				false,           // immediate (true = don't send if the queue doesn't exist)
 
 				amqp.Publishing{
-					ContentType:   "text/plain",                                          // Content type of the message, ignored by RabbitMQ
-					CorrelationId: message.CorrelationId,                                 // Correlation ID of the message, used to specify who called the RPC
-					Body:          []byte(strconv.FormatFloat(quote_price, 'f', -1, 64)), // Quote price converted to string and then to bytes
+					ContentType:   "text/plain",                                                         // Content type of the message, ignored by RabbitMQ
+					CorrelationId: message.CorrelationId,                                                // Correlation ID of the message, used to specify who called the RPC
+					Body:          []byte(symbol + " " + strconv.FormatFloat(quote_price, 'f', -1, 64)), // Quote price converted to string and then to bytes
 				},
 			)
 
@@ -166,7 +167,7 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 
 	// If it has expired or doesn't exist then connect to the Quote server and request it
 	if get_new_quote {
-		val, err = query_quote_server(symbol, user)
+		val = query_quote_server(symbol, user)
 
 		if err != nil {
 			log.Panicf(" [error] Failed to connect to quote server: %s", err)
@@ -193,19 +194,20 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	return quote_price
 }
 
-func query_quote_server(symbol string, user string) (string, error) {
+func query_quote_server(symbol string, user string) string {
 	// Connect to the quote server a raw TCP socket
-	conn, err := net.Dial("tcp", QUOTE_SERVER_ADDRESS)
+	dialer := net.Dialer{Timeout: QUOTE_SERVER_TIMEOUT_SECONDS * time.Second}
+	conn, err := dialer.Dial("tcp", QUOTE_SERVER_ADDRESS)
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to connect to quote server: %s", err)
 	}
 
 	// Send the symbol and user pair to the quote server
 	_, err = conn.Write([]byte(symbol + " " + user))
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to send: %s to quote server: %s", symbol+" "+user, err)
 	}
 
 	// Read the response from the quote server
@@ -214,14 +216,14 @@ func query_quote_server(symbol string, user string) (string, error) {
 	_, err = conn.Read(response)
 
 	if err != nil {
-		return "", err
+		log.Panicf(" [error] Failed to read response from quote server: %s", err)
 	}
 
 	// Tons of data returned that we don't care about, only care about the quote price
 	// The quote price is the first value in the response
 	split := strings.Split(string(response), ",")
 
-	return split[0], nil
+	return split[0]
 }
 
 // RETRY FUNCTIONS:

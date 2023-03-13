@@ -7,6 +7,10 @@
   pointer-events: none;
 }
 
+.App-body{
+	margin: 18px;
+}
+
 .App-header {
   background-color: white;
   min-height: 35vmin;
@@ -15,7 +19,7 @@
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
-  color: white;
+  color: rgb(5, 5, 5);
 }
 
 .accountBalance {
