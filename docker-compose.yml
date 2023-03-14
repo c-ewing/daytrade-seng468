@@ -52,6 +52,10 @@ services:
     build: 
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
+    environment:
+      - REDIS_CONNECTION_ADDRESS=quote-price-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - QUOTE_SERVER_ADDRESS=quoteserve.seng.uvic.ca:4444
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -96,7 +100,6 @@ services:
 
 ######## DEVELOPMENT ########
   mongodb-dev:
-    container_name: "mongodb"
     image: mongo:latest
     ports:
       - "27017:27017"
@@ -113,7 +116,6 @@ services:
       - dev
 
   quote-price-redis-dev:
-    container_name: "quote-price-redis"
     build: 
       context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
@@ -172,6 +174,10 @@ services:
         condition: service_healthy
       quote-price-redis-dev:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=quote-price-redis-dev:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
+      - QUOTE_SERVER_ADDRESS=localhost:4444
     profiles:
       - dev
 
