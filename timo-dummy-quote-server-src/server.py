@@ -28,7 +28,7 @@ class QuoteServerHandler(socketserver.BaseRequestHandler):
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 4444
-
+    print("Starting server on port %d\n CTRL-C to quit\n" % PORT)
     # Create the server, binding to localhost on port 9999
     with socketserver.TCPServer((HOST, PORT), QuoteServerHandler) as server:
         # Activate the server; this will keep running until you
