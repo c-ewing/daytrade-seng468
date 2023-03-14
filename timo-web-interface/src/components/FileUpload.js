@@ -3,30 +3,8 @@ import Button from "react-bootstrap/Button"
 import { useState } from "react"
 
 
-const ampq = requre('amqplib/callback_api');
-
 const sendOperationFile = (msg) => {
   //TODO: Add connection to Rabbit
-  ampq.connect('connection here', (err, connection) => {
-    if (err) {
-      throw err;
-    }
-    connection.createChannel((err, channel) => {
-      if (err) {
-        throw err;
-      }
-
-      // TODO: Change queue name
-      let queueName = "operation_queue";
-      
-      channel.assertQueue(queueName,  {
-        durable: false
-      });
-      
-      channel.sendToQueue(queueName, Buffer.from(msg));
-    })
-  }
-  )
   
 }
 
@@ -41,7 +19,7 @@ function FileUpload(props) {
       reader.readAsText(selectedFile);
       reader.onload = () => {
         console.log(reader.result);
-        sendOperationFile(reader.result)
+        // sendOperationFile(reader.result)
       };
     }
   };
