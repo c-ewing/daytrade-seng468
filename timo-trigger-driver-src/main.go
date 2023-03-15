@@ -17,7 +17,7 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "quote-price-redis:6379")
+var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
 
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
