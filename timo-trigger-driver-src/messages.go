@@ -4,7 +4,7 @@ import "time"
 
 type CommandMessage struct {
 	Command           string  `json:"command" bson:"command"`
-	TransactionNumber int     `json:"transaction_number,omitempty" bson:"transaction_number,omitempty"`
+	TransactionNumber int64   `json:"transaction_number,omitempty" bson:"transaction_number,omitempty"`
 	Userid            string  `json:"userid,omitempty" bson:"userid,omitempty"`
 	StockSymbol       string  `json:"stock_symbol,omitempty" bson:"stock_symbol,omitempty"`
 	Amount            float64 `json:"amount,omitempty" bson:"amount,omitempty"`
