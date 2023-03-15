@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
 	"os"
@@ -104,19 +105,54 @@ func main() {
 		defer cancel()
 
 		for message := range rabbit_messages {
-			split := strings.Split(string(message.Body), " ")
-			// Check that the message is valid
-			if len(split) != 2 {
-				log.Printf(" [warn] Received invalid message: %s", message.Body)
+			// Make sure the message isn't empty
+			if message.Body == nil {
+				log.Printf(" [error] Received empty message on the quote driver: %+v", message)
+				message.Ack(false) // False = Only acknowledge the current message
 				continue
 			}
-			symbol, user := split[0], split[1]
-			log.Printf(" [info] Received quote request from: %s for %s", user, symbol)
+
+			// Decode the message to a struct
+			var command Message
+			err = json.Unmarshal(message.Body, &command)
+
+			if err != nil || command.Command == "" {
+				log.Printf(" [error] Failed to decode message: %s", err)
+				message.Ack(false) // False = Only acknowledge the current message
+				continue
+			}
+
+			// Check that the message is valid
+			if command.Command != "QUOTE" {
+				log.Printf(" [error] Received invalid command on the quote driver: %s", command.Command)
+				message.Ack(false) // False = Only acknowledge the current message
+				continue
+			}
+
+			if command.StockSymbol == "" {
+				log.Printf(" [error] Received invalid stock symbol on the quote driver: %s", command.StockSymbol)
+				message.Ack(false) // False = Only acknowledge the current message
+				continue
+			}
+
+			if command.Userid == "" {
+				log.Printf(" [error] Received invalid username on the quote driver: %s", command.Userid)
+				message.Ack(false) // False = Only acknowledge the current message
+				continue
+			}
+
+			log.Printf(" [info] Received quote request from: %s for %s", command.Userid, command.StockSymbol)
 
 			// As more than  one message at a time can sit in the queue using a go routine would add unnecessary complexity
 			// If we begin accepting more than one message at a time we would need to add a goroutine to handle each message
-			quote_price := get_or_refresh_quote_price(redis_client, symbol, user)
-			log.Printf(" [info] Got quote price: %s for %s for user %s", strconv.FormatFloat(quote_price, 'f', -1, 64), symbol, user)
+			quote := get_or_refresh_quote_price(redis_client, command.StockSymbol, command.Userid)
+			log.Printf(" [info] Got quote price: %f for %s for user %s", quote.QuotePrice, quote.StockSymbol, quote.Userid)
+
+			quote_bytes, err := json.Marshal(quote)
+
+			if err != nil {
+				log.Panicf(" [error] Failed to encode quote return: %s", err)
+			}
 
 			// Send the quote price back to the client
 			// TODO: Add a retry loop here
@@ -128,9 +164,9 @@ func main() {
 				false,           // immediate (true = don't send if the queue doesn't exist)
 
 				amqp.Publishing{
-					ContentType:   "text/plain",                                                         // Content type of the message, ignored by RabbitMQ
-					CorrelationId: message.CorrelationId,                                                // Correlation ID of the message, used to specify who called the RPC
-					Body:          []byte(symbol + " " + strconv.FormatFloat(quote_price, 'f', -1, 64)), // Quote price converted to string and then to bytes
+					ContentType:   "text/plain",          // Content type of the message, ignored by RabbitMQ
+					CorrelationId: message.CorrelationId, // Correlation ID of the message, used to specify who called the RPC
+					Body:          quote_bytes,
 				},
 			)
 
@@ -157,13 +193,13 @@ func environment_variable_or_default(key string, def string) string {
 	return value
 }
 
-func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user string) float64 {
+func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user string) QuoteReturn {
 	// Create a Context that creates a timeout for connecting to Redis
 	timeout_context, cancel := context.WithTimeout(context.Background(), REDIS_TIMEOUT_SECONDS*time.Second)
 	defer cancel()
 
 	// Query Redis for the quote price
-	val, err := redis_client.Get(timeout_context, symbol).Result()
+	value_string, err := redis_client.Get(timeout_context, symbol).Result()
 	get_new_quote := false
 
 	if err == redis.Nil {
@@ -174,38 +210,68 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 		log.Panicf(" [error] Failed to get quote price for %s from Redis", symbol)
 	} else {
 		// If the value returned is empty then request the quote price from the Quote server
-		if val == "" {
+		if value_string == "" {
 			get_new_quote = true
 		}
 	}
 
-	// If it has expired or doesn't exist then connect to the Quote server and request it
-	if get_new_quote {
-		val = query_quote_server(symbol, user)
+	// Redis has the quote price and it hasn't expired
+	if !get_new_quote {
+		log.Printf(" [info] Got quote price for %s from Redis", symbol)
+		var quote QuoteReturn
+		err = json.Unmarshal([]byte(value_string), &quote)
 
 		if err != nil {
-			log.Panicf(" [error] Failed to connect to quote server: %s", err)
+			log.Panicf(" [error] Failed to decode quote response for %s from Redis", symbol)
 		}
 
-		// Stash it in Redis with an expiry
-		val, err = redis_client.Set(timeout_context, symbol, val, REDIS_EXPIRY_SECONDS*time.Second).Result()
-
-		if err != nil {
-			// TODO: Recover from this error, Retry setting the quote price from Redis
-			log.Panicf(" [error] Failed to set quote price for %s in Redis", symbol)
-		}
+		return quote
 	}
 
-	// Convert the string to a float
-	quote_price, err := strconv.ParseFloat(val, 64)
+	// The quote price is not in Redis or it has expired
+	// Connect to the Quote server and request it
+	value_string = query_quote_server(symbol, user)
+
+	var quote QuoteReturn
+	// Parse the response into a QuoteReturn struct
+	value_string_split := strings.Split(value_string, ",")
+	quote.Command = "QUOTE"
+	// Parse the float64 quote price
+	quote.QuotePrice, err = strconv.ParseFloat(value_string_split[0], 64)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to convert quote price for %s from string to float", val)
-	} else {
-		log.Printf(" [info] Got quote price: %s for %s from Redis", val, symbol)
+		log.Panicf(" [error] Failed to parse quote price for %s from Quote Server", symbol)
 	}
 
-	return quote_price
+	quote.StockSymbol = value_string_split[1]
+	quote.Userid = value_string_split[2]
+	// Parse the int64 timestamp
+	log.Printf(" [DEBUG] timestamp: value_string_split[3] = %s", value_string_split[3])
+	timestamp_ms, err := strconv.ParseInt(value_string_split[3], 10, 64)
+
+	if err != nil {
+		log.Panicf(" [error] Failed to parse timestamp for %s from Quote Server", symbol)
+	}
+
+	quote.Timestamp = time.UnixMilli(timestamp_ms)
+	quote.CryptographicKey = value_string_split[4]
+
+	// Encode the QuoteReturn struct into a JSON string
+	value_bytes, err := json.Marshal(quote)
+
+	if err != nil {
+		log.Panicf(" [error] Failed to encode quote return: %s", err)
+	}
+
+	// QuoteReturn successfully parsed, put it into Redis
+	_, err = redis_client.Set(timeout_context, symbol, string(value_bytes), REDIS_EXPIRY_SECONDS*time.Second).Result()
+
+	if err != nil {
+		// TODO: Recover from this error, Retry setting the quote price from Redis
+		log.Panicf(" [error] Failed to set quote price for %s in Redis", symbol)
+	}
+
+	return quote
 }
 
 func query_quote_server(symbol string, user string) string {
@@ -233,11 +299,7 @@ func query_quote_server(symbol string, user string) string {
 		log.Panicf(" [error] Failed to read response from quote server: %s", err)
 	}
 
-	// Tons of data returned that we don't care about, only care about the quote price
-	// The quote price is the first value in the response
-	split := strings.Split(string(response), ",")
-
-	return split[0]
+	return string(response)
 }
 
 // RETRY FUNCTIONS:
