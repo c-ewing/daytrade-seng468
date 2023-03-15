@@ -4,11 +4,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -139,22 +138,28 @@ func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan 
 		}
 
 		// Parse the RPC return
-		symbol, price := parse_rpc_return(message.Body)
-		log.Printf(" [info] Broadcasting Stock Price Update: %s is %s", symbol, strconv.FormatFloat(price, 'f', -1, 64))
+		var rpc_return QuoteReturn
+		err := json.Unmarshal(message.Body, &rpc_return)
+
+		if err != nil {
+			log.Panicf("[error] Failed to parse RPC return: %s", err)
+		}
+
+		log.Printf(" [info] Broadcasting Stock Price Update: %s is %f", rpc_return.StockSymbol, rpc_return.QuotePrice)
 
 		// Create a context that times out after RABBITMQ_TIMEOUT_SECONDS seconds
 		rabbitmq_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
 
 		// Broadcast the stock price update to the exchange
-		err := rabbitmq_channel.PublishWithContext(
-			rabbitmq_timeout,      // context
-			"stock_price_updates", // exchange
-			symbol,                // routing key
-			false,                 // mandatory
-			false,                 // immediate
+		err = rabbitmq_channel.PublishWithContext(
+			rabbitmq_timeout,       // context
+			"stock_price_updates",  // exchange
+			rpc_return.StockSymbol, // routing key
+			false,                  // mandatory
+			false,                  // immediate
 			amqp.Publishing{
 				ContentType: "text/plain",
-				Body:        []byte(strconv.FormatFloat(price, 'f', -1, 64)),
+				Body:        message.Body, // Use the same message body as the RPC return, basically just sorting into the correct queue
 			},
 		)
 
@@ -176,22 +181,6 @@ func randomString(l int) string {
 
 func randInt(min int, max int) int {
 	return min + rand.Intn(max-min)
-}
-
-func parse_rpc_return(body []byte) (string, float64) {
-	s := strings.Split(string(body), " ")
-	if len(s) != 2 {
-		log.Panicf("[error] Failed to parse RPC return: %s", body)
-	}
-
-	symbol := s[0]
-	price, err := strconv.ParseFloat(s[1], 64)
-
-	if err != nil {
-		log.Panicf("[error] Failed to parse price: %s", err)
-	}
-
-	return symbol, price
 }
 
 func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel *amqp.Channel, corrId string, rpc_return_queue amqp.Queue) {
@@ -228,6 +217,19 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 
 		log.Printf(" [info] Updating price for %s using user %s", symbol, user)
 
+		// Create a new quote request message:
+		price_request := CommandMessage{
+			Command:     "QUOTE",
+			Userid:      user,
+			StockSymbol: symbol,
+		}
+		// Convert to JSON byte slice for sending over RabbitMQ
+		price_request_json, err := json.Marshal(price_request)
+
+		if err != nil {
+			log.Panicf("[error] Failed to convert quote request to JSON: %s", err)
+		}
+
 		err = rabbitmq_channel.PublishWithContext(
 			quote_timeout,
 			"",                     // Default Exchange
@@ -238,7 +240,7 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 				ContentType:   "text/plain",
 				CorrelationId: corrId,
 				ReplyTo:       rpc_return_queue.Name,
-				Body:          []byte(symbol + " " + user),
+				Body:          price_request_json,
 			},
 		)
 
