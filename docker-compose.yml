@@ -149,7 +149,6 @@ services:
       - dev
   
   rabbitmq-dev:
-    container_name: "rabbitmq"
     build: 
       context: ./timo-rabbitmq-docker/
       dockerfile: rabbitmq_dockerfile
