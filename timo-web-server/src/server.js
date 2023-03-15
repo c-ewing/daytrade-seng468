@@ -29,7 +29,7 @@ app.post('/send-data', configuredCors, (req, res) => {
 }
 );
 
-app.listen(3001, () => {
-    console.log("Server running on 3001")
+app.listen(8080, () => {
+    console.log("Server running on 8080")
 }
 );

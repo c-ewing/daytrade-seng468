@@ -93,6 +93,15 @@ services:
     profiles:
       - production
 
+  web-server:
+    build:
+      context: ./timo-web-server/
+      dockerfile: web_server_dockerfile
+    ports:
+      - 8080:8080
+    profiles:
+      - production
+
 
 ######## DEVELOPMENT ########
   mongodb-dev:
@@ -219,3 +228,12 @@ services:
         condition: service_healthy
     profiles:
       - dev
+
+  web-server-dev:
+      build:
+        context: ./timo-web-server/
+        dockerfile: web_server_dockerfile
+      ports:
+        - 8080:8080
+      profiles:
+        - dev
