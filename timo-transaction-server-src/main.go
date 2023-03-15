@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-const RABBITMQ_CONNECTION_STRING = "amqp://guest:guest@rabbitmq:5672/"
+var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 // TODO: Find out from Esteban what this actually would be
-const MONGODB_CONNECTION_STRING = "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority"
+var MONGODB_CONNECTION_STRING = environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
+
 const MONGODB_TIMEOUT_SECONDS = 5
 
 // FUNCTIONS:
@@ -178,6 +181,16 @@ func process_messages(msgs <-chan amqp.Delivery, mongo_client *mongo.Client, rab
 
 		cancel()
 	}
+}
+
+// HELPERS:
+func environment_variable_or_default(key string, def string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
+		return def
+	}
+	return value
 }
 
 // RETRY FUNCTIONS:
