@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-const REDIS_CONNECTION_ADDRESS = "trigger-symbol-redis:6379"
+var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "quote-price-redis:6379")
+
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
 
-const RABBITMQ_CONNECTION_STRING = "amqp://guest:guest@rabbitmq:5672/"
+var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 // FUNCTIONS:
@@ -130,6 +133,16 @@ func main() {
 
 	log.Printf(" [info] Waiting for Trigger Subscription Requests. To exit press CTRL+C")
 	<-forever // Block forever to keep the program running while waiting for RPC requests
+}
+
+// HELPERS:
+func environment_variable_or_default(key string, def string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
+		return def
+	}
+	return value
 }
 
 // RETRY FUNCTIONS:
