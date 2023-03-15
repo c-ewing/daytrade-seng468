@@ -4,11 +4,11 @@ import "time"
 
 type Message struct {
 	Command           string  `json:"command" bson:"command"`
-	TransactionNumber int     `json:"transaction_number" bson:"transaction_number"`
-	Userid            string  `json:"userid" bson:"userid"`
-	StockSymbol       string  `json:"stock_symbol" bson:"stock_symbol"`
-	Amount            float64 `json:"amount" bson:"amount"`
-	Filename          string  `json:"filename" bson:"filename"`
+	TransactionNumber int     `json:"transaction_number,omitempty" bson:"transaction_number,omitempty"`
+	Userid            string  `json:"userid,omitempty" bson:"userid,omitempty"`
+	StockSymbol       string  `json:"stock_symbol,omitempty" bson:"stock_symbol,omitempty"`
+	Amount            float64 `json:"amount,omitempty" bson:"amount,omitempty"`
+	Filename          string  `json:"filename,omitempty" bson:"filename,omitempty"`
 }
 
 type QuoteReturn struct {
