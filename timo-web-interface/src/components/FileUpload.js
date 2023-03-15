@@ -2,10 +2,18 @@ import Form from "react-bootstrap/Form"
 import Button from "react-bootstrap/Button"
 import { useState } from "react"
 
-
 const sendOperationFile = (msg) => {
-  //TODO: Add connection to Rabbit
-  
+  //TODO: Send to Express
+  fetch('http://localhost:8080/send-data', {
+
+    headers: {
+      'Content-Type': 'application/json;charset=UTF-8'
+    },
+    method: 'POST',
+    body: JSON.stringify({data: msg})
+  }).then(function(response) {
+    console.log(response.body)
+  });
 }
 
 function FileUpload(props) {
@@ -18,8 +26,7 @@ function FileUpload(props) {
       const reader = new FileReader();
       reader.readAsText(selectedFile);
       reader.onload = () => {
-        console.log(reader.result);
-        // sendOperationFile(reader.result)
+          sendOperationFile(reader.result)
       };
     }
   };
