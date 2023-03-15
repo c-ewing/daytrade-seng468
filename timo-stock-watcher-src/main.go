@@ -6,6 +6,7 @@ import (
 	"context"
 	"log"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,11 +19,13 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-const TRIGGER_CONNECTION_ADDRESS = "trigger-symbol-redis:6379"
+var TRIGGER_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
+
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
 
-const RABBITMQ_CONNECTION_STRING = "amqp://guest:guest@rabbitmq:5672/"
+var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 const PRICE_REFRESH_FREQUENCY_SECONDS = 5
@@ -119,6 +122,15 @@ func main() {
 }
 
 // HELPER FUNCTIONS:
+func environment_variable_or_default(key string, def string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
+		return def
+	}
+	return value
+}
+
 func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan amqp.Delivery) {
 	for message := range msgs {
 		log.Printf("Here: %d", len(msgs))
