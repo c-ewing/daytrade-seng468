@@ -45,4 +45,3 @@ Middleware and used for communicating with other services
 ---
 Commands: `messages.go`
 Defines the possible messages sent via RabbitMQ. Enables conversion to/from JSON strings (message format) to Go structs for use within code.
-*TODO: This needs to be created*
