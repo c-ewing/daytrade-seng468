@@ -2,7 +2,7 @@ package main
 
 import "time"
 
-type Message struct {
+type CommandMessage struct {
 	Command           string  `json:"command" bson:"command"`
 	TransactionNumber int     `json:"transaction_number,omitempty" bson:"transaction_number,omitempty"`
 	Userid            string  `json:"userid,omitempty" bson:"userid,omitempty"`

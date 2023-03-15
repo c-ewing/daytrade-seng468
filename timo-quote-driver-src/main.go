@@ -113,7 +113,7 @@ func main() {
 			}
 
 			// Decode the message to a struct
-			var command Message
+			var command CommandMessage
 			err = json.Unmarshal(message.Body, &command)
 
 			if err != nil || command.Command == "" {
