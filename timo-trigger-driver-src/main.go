@@ -4,9 +4,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -98,32 +98,32 @@ func main() {
 		defer cancel()
 
 		for message := range rabbit_messages {
-			// Messages are expected to be in the format "COMMAND SYMBOL USER"
-			split := strings.Split(string(message.Body), " ")
-			// Check that the message is valid
-			if len(split) != 3 {
-				log.Printf(" [warn] Received invalid message: %s", message.Body)
-				continue
+			// Unmarshal the command message from the message body
+			var command_message CommandMessage
+			err := json.Unmarshal(message.Body, &command_message)
+
+			if err != nil {
+				log.Panicf(" [error] Failed to unmarshal message body: %s", err)
 			}
-			command, symbol, user := split[0], split[1], split[2]
-			log.Printf(" [info] Received trigger %s request from: %s for %s", command, user, symbol)
 
-			if command == "ADD" {
+			log.Printf(" [info] Received trigger %s request from: %s for %s", command_message.Command, command_message.Userid, command_message.StockSymbol)
+
+			if command_message.Command == "TRIGGER_ADD" {
 				// Add this user to the set of users subscribed to this symbol
-				_, err := redis_client.SAdd(timeout_context, symbol, user).Result()
+				_, err := redis_client.SAdd(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", user, symbol, err)
+					log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
-			} else if command == "REMOVE" {
+			} else if command_message.Command == "TRIGGER_REMOVE" {
 				// Remove this user from the set of users subscribed to this symbol
-				_, err := redis_client.SRem(timeout_context, symbol, user).Result()
+				_, err := redis_client.SRem(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", user, symbol, err)
+					log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
 			} else {
-				log.Printf(" [warn] Received invalid command: %s in message: %s", command, string(message.Body))
+				log.Printf(" [warn] Received invalid command: %s in message: %+v", command_message.Command, command_message)
 			}
 
 			// Acknowledge the message to remove it from the queue now that we have updated the database
