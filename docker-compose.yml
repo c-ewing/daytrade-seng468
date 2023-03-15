@@ -176,7 +176,7 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=quote-price-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - QUOTE_SERVER_ADDRESS=localhost:4444
+      - QUOTE_SERVER_ADDRESS=host.docker.internal:4444
     profiles:
       - dev
 
