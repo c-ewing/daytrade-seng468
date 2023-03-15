@@ -9,23 +9,24 @@ const sendToRabbit = (data) => {
   console.log(data)
 }
 const corsOptions = {
-  origin: 'http://localhost:3000',
+  origin: 'http://localhost',
 }
 
 // Configure Express
 const configuredCors = cors(corsOptions);
 app.options('*', configuredCors)
 app.use(cors())
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({limit: '10mb'}));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Operation File received
 app.post('/send-data', configuredCors, (req, res) => {
   const data = req.body.data;
-  const operations = data.split('\r\n')
+  const operations = data.split("\r\n")
   for (var i = 0; i < operations.length; i++) {
     sendToRabbit(operations[i])
   }
+  
 }
 );
 

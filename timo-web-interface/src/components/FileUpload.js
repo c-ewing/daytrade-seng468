@@ -26,8 +26,7 @@ function FileUpload(props) {
       const reader = new FileReader();
       reader.readAsText(selectedFile);
       reader.onload = () => {
-        // console.log(reader.result);
-        sendOperationFile(reader.result)
+          sendOperationFile(reader.result)
       };
     }
   };
