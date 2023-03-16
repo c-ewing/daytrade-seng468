@@ -24,6 +24,11 @@ Responds with:
 }
 ```
 
+## Environment Variables:
+- `REDIS_CONNECTION_ADDRESS`: Redis connection URI for the *Quote Cache*
+- `RABBITMQ_CONNECTION_STRING`: RabbitMQ connection URI
+- `QUOTE_SERVER_ADDRESS`: Connection URL for the *Quote Server*
+
 ## Interactions:
 Used by:
 - Stock Watcher
