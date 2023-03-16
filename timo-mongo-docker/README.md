@@ -27,7 +27,7 @@ then in that new terminal `cd` as shown before, and from there
 
 and in that shell
 
-```mongos localhost:27011```
+```mongosh localhost:27011```
 
 then to check you can do `show dbs`
 
