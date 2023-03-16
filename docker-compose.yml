@@ -52,15 +52,16 @@ services:
     build: 
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
-    environment:
-      - REDIS_CONNECTION_ADDRESS=quote-price-redis:6379
-      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
-      - QUOTE_SERVER_ADDRESS=quoteserve.seng.uvic.ca:4444
     depends_on:
       rabbitmq:
         condition: service_healthy
       quote-price-redis:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=quote-price-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
+      - QUOTE_SERVER_ADDRESS=quoteserve.seng.uvic.ca:4444
     profiles:
       - production
 
@@ -73,6 +74,11 @@ services:
         condition: service_healthy
       trigger-symbol-redis:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
+      - QUOTE_SERVER_ADDRESS=quoteserve.seng.uvic.ca:4444
     profiles:
       - production
 
@@ -85,6 +91,10 @@ services:
         condition: service_healthy
       trigger-symbol-redis:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
     profiles:
       - production
     
@@ -141,7 +151,6 @@ services:
       - dev
 
   trigger-symbol-redis-dev:
-    container_name: "trigger-symbol-redis"
     build: 
       context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
@@ -185,7 +194,8 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=quote-price-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - QUOTE_SERVER_ADDRESS=localhost:4444
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - QUOTE_SERVER_ADDRESS=host.docker.internal:4444
     profiles:
       - dev
 
@@ -198,6 +208,10 @@ services:
         condition: service_healthy
       trigger-symbol-redis-dev:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
     profiles:
       - dev
 
@@ -210,6 +224,10 @@ services:
         condition: service_healthy
       trigger-symbol-redis-dev:
         condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
     profiles:
       - dev
       
@@ -231,6 +249,9 @@ services:
         condition: service_healthy
       rabbitmq-dev:
         condition: service_healthy
+    environment:
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
     profiles:
       - dev
 

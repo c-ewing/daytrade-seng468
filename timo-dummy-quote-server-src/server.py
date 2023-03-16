@@ -20,15 +20,15 @@ class QuoteServerHandler(socketserver.BaseRequestHandler):
 
         # Generate the response and send it back to the client
         random_price = random.randint(50, 500) / 100.0
-        response = "{},{},{},{},{}".format(random_price, call[0], call[1], time.time_ns() / 1000, "Tnssjq2UKzc+KQ/KhjmENlfJSHRD7VBXxiYh1CVpyDo=")
+        response = "{},{},{},{},{}".format(random_price, call[0], call[1], "1641952356940", "Tnssjq2UKzc+KQ/KhjmENlfJSHRD7VBXxiYh1CVpyDo=")
         # {price,symbol,username,timestamp,cryptokey}
         print(response)
         self.request.sendall(response.encode("utf-8"))
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 4444
-    print("Starting server on port %d\n CTRL-C to quit\n" % PORT)
-    # Create the server, binding to localhost on port 9999
+    print("Starting server on port {}:{}\n CTRL-C to quit\n".format(HOST, PORT))
+    
     with socketserver.TCPServer((HOST, PORT), QuoteServerHandler) as server:
         # Activate the server; this will keep running until you
         # interrupt the program with Ctrl-C

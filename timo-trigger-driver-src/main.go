@@ -4,8 +4,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
-	"strings"
+	"os"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -16,11 +17,13 @@ import (
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
 
-const REDIS_CONNECTION_ADDRESS = "trigger-symbol-redis:6379"
+var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
+
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
 
-const RABBITMQ_CONNECTION_STRING = "amqp://guest:guest@rabbitmq:5672/"
+var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 // FUNCTIONS:
@@ -95,32 +98,32 @@ func main() {
 		defer cancel()
 
 		for message := range rabbit_messages {
-			// Messages are expected to be in the format "COMMAND SYMBOL USER"
-			split := strings.Split(string(message.Body), " ")
-			// Check that the message is valid
-			if len(split) != 3 {
-				log.Printf(" [warn] Received invalid message: %s", message.Body)
-				continue
+			// Unmarshal the command message from the message body
+			var command_message CommandMessage
+			err := json.Unmarshal(message.Body, &command_message)
+
+			if err != nil {
+				log.Panicf(" [error] Failed to unmarshal message body: %s", err)
 			}
-			command, symbol, user := split[0], split[1], split[2]
-			log.Printf(" [info] Received trigger %s request from: %s for %s", command, user, symbol)
 
-			if command == "ADD" {
+			log.Printf(" [info] Received trigger %s request from: %s for %s", command_message.Command, command_message.Userid, command_message.StockSymbol)
+
+			if command_message.Command == "TRIGGER_ADD" {
 				// Add this user to the set of users subscribed to this symbol
-				_, err := redis_client.SAdd(timeout_context, symbol, user).Result()
+				_, err := redis_client.SAdd(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", user, symbol, err)
+					log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
-			} else if command == "REMOVE" {
+			} else if command_message.Command == "TRIGGER_REMOVE" {
 				// Remove this user from the set of users subscribed to this symbol
-				_, err := redis_client.SRem(timeout_context, symbol, user).Result()
+				_, err := redis_client.SRem(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", user, symbol, err)
+					log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
 			} else {
-				log.Printf(" [warn] Received invalid command: %s in message: %s", command, string(message.Body))
+				log.Printf(" [warn] Received invalid command: %s in message: %+v", command_message.Command, command_message)
 			}
 
 			// Acknowledge the message to remove it from the queue now that we have updated the database
@@ -130,6 +133,16 @@ func main() {
 
 	log.Printf(" [info] Waiting for Trigger Subscription Requests. To exit press CTRL+C")
 	<-forever // Block forever to keep the program running while waiting for RPC requests
+}
+
+// HELPERS:
+func environment_variable_or_default(key string, def string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
+		return def
+	}
+	return value
 }
 
 // RETRY FUNCTIONS:
