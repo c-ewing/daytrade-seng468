@@ -33,12 +33,25 @@ This queue is used to send RPC calls to the *Quote Server(s)* and is defined on 
 The `quote_price_requests` queue expects JSON string messages of the form:
 ```json
  {
-	"command":              string,
+	"command":              "QUOTE",
 	"userid":               string,
 	"stock_symbol":         string,
 }
 ```
 The default `CommandMessage` is accepted as only the three fields listed above are checked and used by the Quote Driver.
+
+## `trigger_symbol`
+
+This queue is used to receive requests on the *Trigger Driver(s)* to add or remove a stock from the list of stocks to be constantly refreshed. This queue is defined on the **default** exchange. The queue is `durable`, `not deleted when unused`, `not exclusive`, and waits for the queue to be created on the server (`no wait = false`).
+
+The `trigger_symbol` queue expects JSON string messages of the form:
+```json
+ {
+	"command":              "TRIGGER_ADD" | "TRIGGER_REMOVE",
+	"userid":               string,
+	"stock_symbol":         string,
+}
+```
 
 ## Exchanges:
 
@@ -62,7 +75,7 @@ Used to send commands to the *Transaction Server(s)*.
 	"command":              string,
 	"transaction_number":   int64,
 	"userid":               string,
-	"stock_symbol":         string,
+	"stock_symbol":         string,		// MAX OF 3 CHARACTERS
 	"amount":               float64, 
 	"filename":             string,
 }
@@ -75,9 +88,9 @@ Return by the *Quote Driver(s)* in response to a RPC for a quote price.
 {
 	"command":				string,
 	"userid":				string,
-	"stock_symbol":			string,
+	"stock_symbol":			string,		// MAX OF 3 CHARACTERS
 	"quote_price":			float64,
-	"timestamp":			time.Time,
+	"timestamp":			time.Time,	// Go Time format
 	"cryptographic_key":	string,
 }
 ```

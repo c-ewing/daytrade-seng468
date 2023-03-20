@@ -2,7 +2,7 @@
 
 Receives RPC calls through RabbitMQ messages for price quotes for a specified stock symbol for a given user. Returns the quoted price for the specified stock and user to the caller by a caller created RabbitMQ response queue.
 
-This is an **internal** service that has no communication with the end user directly. This service is used by the `Transaction Server` as well as the `Stock Watcher` microservice
+This is an **internal** service that has no communication with the end user directly. This service is used by the *Transaction Server(s)* as well as the *Stock Watcher(s)* microservices
 
 ## Call Format:
 Listens for a serialized JSON string message, containing a command of the format:
@@ -12,8 +12,10 @@ Listens for a serialized JSON string message, containing a command of the format
     "Userid":       string,
     "StockSymbol":  string, // MAX OF 3 CHARACTERS
 }
+```
 
 Responds with:
+```json
 {
     "Command":          "QUOTE",
     "Userid":           string,
@@ -37,6 +39,7 @@ Used by:
 ## Libraries:
 ---
 Logging: `logging.go`
+
 Used for logging to the MongoDB Database
 - Depends on: `xml_structs.go`
 - Depends on: `mongoDB.go`
@@ -44,9 +47,11 @@ Used for logging to the MongoDB Database
 
 ---
 RabbitMQ: `rabbitMQ.go`
+
 Middleware and used for communicating with other services
 *TODO: This needs to be refactored out of all the microservices*
 
 ---
 Commands: `messages.go`
+
 Defines the possible messages sent via RabbitMQ. Enables conversion to/from JSON strings (message format) to Go structs for use within code.
