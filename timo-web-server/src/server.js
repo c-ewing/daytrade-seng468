@@ -62,7 +62,7 @@ const sendToRabbit = (data) => {
   })
 }
 const corsOptions = {
-  origin: 'http://localhost',
+  origin: 'http://localhost'
 }
 
 // Configure Express

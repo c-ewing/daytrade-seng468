@@ -97,24 +97,38 @@ services:
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
     profiles:
       - production
-    
-  web-interface:
-    build:
-      context: ./timo-web-interface/
-      dockerfile: web_dockerfile
-    ports:
-      - 80:80
-    profiles:
-      - production
-
+  
   web-server:
     build:
       context: ./timo-web-server/
       dockerfile: web_server_dockerfile
     ports:
       - 8080:8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     profiles:
       - production
+
+  web-interface:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    ports:
+      - 80:80
+    depends_on:
+      web-server:
+        condition: service_healthy
+    profiles:
+      - production
+
+
 
 
 ######## DEVELOPMENT ########
@@ -230,13 +244,34 @@ services:
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
     profiles:
       - dev
-      
+
+  web-server-dev:
+    build:
+      context: ./timo-web-server/
+      dockerfile: web_server_dockerfile
+    depends_on:
+      rabbitmq-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    ports:
+      - 8080:8080
+    profiles:
+      - dev
+
   web-interface-dev:
     build:
       context: ./timo-web-interface/
       dockerfile: web_dockerfile
     ports:
       - 80:80
+    depends_on:
+      web-server-dev:
+        condition: service_healthy
     profiles:
       - dev
 
@@ -255,11 +290,4 @@ services:
     profiles:
       - dev
 
-  web-server-dev:
-      build:
-        context: ./timo-web-server/
-        dockerfile: web_server_dockerfile
-      ports:
-        - 8080:8080
-      profiles:
-        - dev
+  
