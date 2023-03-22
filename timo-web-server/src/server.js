@@ -51,15 +51,17 @@ const formatOperation = (data) => {
 }
 // Send data to Rabbit Queue
 const sendToRabbit = (data) => {
-  console.log(data)
-  amqp.connect('amqp://guest:guest@rabbitmq-dev:5672', (err, conn) => {
+  amqp.connect('amqp://guest:guest@rabbitmq-dev', (err, conn) => {
     if (err) throw err;
-    conn.createChannel((err, ch2) => {
+    conn.createChannel((err, channel) => {
       if (err) throw err;
       
-      ch2.assertQueue(commandQueue);
-    })
-  })
+      channel.assertQueue(commandQueue);
+
+      channel.sendToQueue(commandQueue, Buffer.from(JSON.stringify(data)));
+      conn.close()
+    });
+  });
 }
 const corsOptions = {
   origin: 'http://localhost'
