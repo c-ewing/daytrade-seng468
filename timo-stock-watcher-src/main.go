@@ -23,7 +23,7 @@ const RABBITMQ_TIMEOUT_SECONDS = 5
 
 const PRICE_REFRESH_FREQUENCY_SECONDS = 5
 
-var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TriggerListener")
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "StockWatcher")
 var TRIGGER_CONNECTION_ADDRESS = Environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
 var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
 var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
