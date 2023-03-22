@@ -24,7 +24,7 @@ const REDIS_EXPIRY_SECONDS = 10
 const RABBITMQ_TIMEOUT_SECONDS = 5
 const QUOTE_SERVER_TIMEOUT_SECONDS = 2
 
-var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TriggerListener")
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "QuoteDriver")
 var REDIS_CONNECTION_ADDRESS = Environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "quote-price-redis:6379")
 var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
 var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
