@@ -2,6 +2,22 @@ version: "3.9"
 
 services:
 ######## PRODUCTION ########
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')"
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - production
+
   quote-price-redis:
     build: 
       context: ./timo-redis-docker/
@@ -57,6 +73,8 @@ services:
         condition: service_healthy
       quote-price-redis:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=quote-price-redis:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
@@ -73,6 +91,27 @@ services:
       rabbitmq:
         condition: service_healthy
       trigger-symbol-redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
+      - QUOTE_SERVER_ADDRESS=quoteserve.seng.uvic.ca:4444
+    profiles:
+      - production
+
+  trigger-listener:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-trigger-listener-docker/trigger_listener_dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      trigger-symbol-redis:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis:6379
@@ -91,8 +130,27 @@ services:
         condition: service_healthy
       trigger-symbol-redis:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
+    profiles:
+      - production
+
+  transaction-server:
+    build:
+      context: .
+      dockerfile: ./timo-transaction-server-docker/transaction_server_dockerfile
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      quote-driver:
+        condition: service_started
+    environment:
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
     profiles:
@@ -191,6 +249,8 @@ services:
         condition: service_healthy
       quote-price-redis-dev:
         condition: service_healthy
+      mongodb-dev:
+        condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=quote-price-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
@@ -208,6 +268,26 @@ services:
         condition: service_healthy
       trigger-symbol-redis-dev:
         condition: service_healthy
+      mongodb-dev:
+        condition: service_healthy
+    environment:
+      - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
+      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+    profiles:
+      - dev
+
+  trigger-listener-dev:
+    build: 
+      context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
+      dockerfile: ./timo-trigger-listener-docker/trigger_listener_dockerfile
+    depends_on:
+      rabbitmq-dev:
+        condition: service_healthy
+      trigger-symbol-redis-dev:
+        condition: service_healthy
+      mongodb-dev:
+        condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
@@ -224,19 +304,12 @@ services:
         condition: service_healthy
       trigger-symbol-redis-dev:
         condition: service_healthy
+      mongodb-dev:
+        condition: service_healthy
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
-    profiles:
-      - dev
-      
-  web-interface-dev:
-    build:
-      context: ./timo-web-interface/
-      dockerfile: web_dockerfile
-    ports:
-      - 80:80
     profiles:
       - dev
 
@@ -249,9 +322,22 @@ services:
         condition: service_healthy
       rabbitmq-dev:
         condition: service_healthy
+      quote-driver-dev:
+        condition: service_started
     environment:
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+    profiles:
+      - dev
+      
+  web-interface-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    ports:
+      - 80:80
+    depends_on:
+      - transaction-server-dev
     profiles:
       - dev
 
@@ -261,5 +347,7 @@ services:
         dockerfile: web_server_dockerfile
       ports:
         - 8080:8080
+      depends_on:
+        - transaction-server-dev
       profiles:
         - dev

@@ -16,7 +16,7 @@ const TIME_BETWEEN_RETRIES_SECONDS = 5
 const MONGODB_TIMEOUT_SECONDS = 5
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
-var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TriggerListener")
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TransactionServer")
 var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
 var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
 
