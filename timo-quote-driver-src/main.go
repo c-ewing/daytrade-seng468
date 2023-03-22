@@ -109,7 +109,7 @@ func main() {
 			// Make sure the message isn't empty
 			if message.Body == nil {
 				log.Printf(" [error] Received empty message on the quote driver: %+v", message)
-				message.Ack(false) // False = Only acknowledge the current message
+				message.Reject(false) // Message is bad, reject is and don't requeue it
 				continue
 			}
 
