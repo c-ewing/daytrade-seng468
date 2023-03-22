@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -19,20 +18,20 @@ const INFO = 2
 const DEBUG = 3
 
 // LOG FUNCTIONS:
-func Log_user_command(server string, transaction_num int64, command string, username string, stock_symbol string, filename string, funds float64, mongo_client *mongo.Client) {
+func Log_user_command(command CommandMessage) {
 	// Form the user command
 	user_command := UserCommandType{
 		Timestamp:      time.Now().Unix(),
-		Server:         server,
-		TransactionNum: transaction_num,
-		Command:        command,
-		Username:       username,
-		StockSymbol:    stock_symbol,
-		Filename:       filename,
-		Funds:          funds,
+		Server:         HOSTNAME,
+		TransactionNum: command.TransactionNumber,
+		Command:        command.Command,
+		Username:       command.Userid,
+		StockSymbol:    command.StockSymbol,
+		Filename:       command.Filename,
+		Funds:          command.Amount,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("user_commands")
+	logs := MONGO_CLIENT.Database("logs").Collection("user_commands")
 	_, err := logs.InsertOne(context.Background(), user_command)
 
 	if err != nil {
@@ -40,20 +39,20 @@ func Log_user_command(server string, transaction_num int64, command string, user
 	}
 }
 
-func Log_quote_server(server string, transaction_num int64, price float64, stock_symbol string, username string, quote_server_time time.Time, cryptokey string, mongo_client *mongo.Client) {
+func Log_quote_server(quote QuoteReturn) {
 	// Form the quote server
 	quote_server := QuoteServerType{
 		Timestamp:       time.Now().Unix(),
-		Server:          server,
-		TransactionNum:  transaction_num,
-		Price:           price,
-		StockSymbol:     stock_symbol,
-		Username:        username,
-		QuoteServerTime: quote_server_time.Unix(),
-		Cryptokey:       cryptokey,
+		Server:          HOSTNAME,
+		TransactionNum:  -1, // TODO: Figure out where to get this from...?
+		Price:           quote.QuotePrice,
+		StockSymbol:     quote.StockSymbol,
+		Username:        quote.Userid,
+		QuoteServerTime: quote.Timestamp.UnixMilli(),
+		Cryptokey:       quote.CryptographicKey,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("quote_server")
+	logs := MONGO_CLIENT.Database("logs").Collection("quote_server")
 	_, err := logs.InsertOne(context.Background(), quote_server)
 
 	if err != nil {
@@ -61,18 +60,18 @@ func Log_quote_server(server string, transaction_num int64, price float64, stock
 	}
 }
 
-func Log_account_transaction(server string, transaction_num int64, action string, username string, funds float64, mongo_client *mongo.Client) {
+func Log_account_transaction(transaction_num int64, action string, username string, funds float64) {
 	// Form the account transaction
 	account_transaction := AccountTransactionType{
 		Timestamp:      time.Now().Unix(),
-		Server:         server,
+		Server:         HOSTNAME,
 		TransactionNum: transaction_num,
 		Action:         action,
 		Username:       username,
 		Funds:          funds,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("account_transactions")
+	logs := MONGO_CLIENT.Database("logs").Collection("account_transactions")
 	_, err := logs.InsertOne(context.Background(), account_transaction)
 
 	if err != nil {
@@ -80,20 +79,20 @@ func Log_account_transaction(server string, transaction_num int64, action string
 	}
 }
 
-func Log_system_event(server string, transaction_num int64, command string, username string, stock_symbol string, filename string, funds float64, mongo_client *mongo.Client) {
+func Log_system_event(command CommandMessage) {
 	// Form the system event
 	system_event := SystemEventType{
 		Timestamp:      time.Now().Unix(),
-		Server:         server,
-		TransactionNum: transaction_num,
-		Command:        command,
-		Username:       username,
-		StockSymbol:    stock_symbol,
-		Filename:       filename,
-		Funds:          funds,
+		Server:         HOSTNAME,
+		TransactionNum: command.TransactionNumber,
+		Command:        command.Command,
+		Username:       command.Userid,
+		StockSymbol:    command.StockSymbol,
+		Filename:       command.Filename,
+		Funds:          command.Amount,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("system_events")
+	logs := MONGO_CLIENT.Database("logs").Collection("system_events")
 	_, err := logs.InsertOne(context.Background(), system_event)
 
 	if err != nil {
@@ -101,21 +100,21 @@ func Log_system_event(server string, transaction_num int64, command string, user
 	}
 }
 
-func Log_error_event(server string, transaction_num int64, command string, username string, stock_symbol string, filename string, funds float64, error_message string, mongo_client *mongo.Client) {
+func Log_error_event(command CommandMessage, error_message string) {
 	// Form the error
 	error := ErrorEventType{
 		Timestamp:      time.Now().Unix(),
-		Server:         server,
-		TransactionNum: transaction_num,
-		Command:        command,
-		Username:       username,
-		StockSymbol:    stock_symbol,
-		Filename:       filename,
-		Funds:          funds,
+		Server:         HOSTNAME,
+		TransactionNum: command.TransactionNumber,
+		Command:        command.Command,
+		Username:       command.Userid,
+		StockSymbol:    command.StockSymbol,
+		Filename:       command.Filename,
+		Funds:          command.Amount,
 		ErrorMessage:   error_message,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("errors_events")
+	logs := MONGO_CLIENT.Database("logs").Collection("errors_events")
 	_, err := logs.InsertOne(context.Background(), error)
 
 	if err != nil {
@@ -123,21 +122,21 @@ func Log_error_event(server string, transaction_num int64, command string, usern
 	}
 }
 
-func Log_debug_event(server string, transaction_num int64, command string, username string, stock_symbol string, filename string, funds float64, debug_message string, mongo_client *mongo.Client) {
+func Log_debug_event(command CommandMessage, debug_message string) {
 	// Form the debug
 	debug := DebugType{
-		Timestamp:      time.Now().Unix(),
-		Server:         server,
-		TransactionNum: transaction_num,
-		Command:        command,
-		Username:       username,
-		StockSymbol:    stock_symbol,
-		Filename:       filename,
-		Funds:          funds,
+		Timestamp:      time.Now().UnixMilli(),
+		Server:         HOSTNAME,
+		TransactionNum: command.TransactionNumber,
+		Command:        command.Command,
+		Username:       command.Userid,
+		StockSymbol:    command.StockSymbol,
+		Filename:       command.Filename,
+		Funds:          command.Amount,
 		DebugMessage:   debug_message,
 	}
 	// Log to mongodb
-	logs := mongo_client.Database("logs").Collection("debug_events")
+	logs := MONGO_CLIENT.Database("logs").Collection("debug_events")
 	_, err := logs.InsertOne(context.Background(), debug)
 
 	if err != nil {
@@ -145,9 +144,9 @@ func Log_debug_event(server string, transaction_num int64, command string, usern
 	}
 }
 
-func get_user_command_logs(userid string, mongo_client *mongo.Client) (logs []UserCommandType) {
+func get_user_command_logs(userid string) (logs []UserCommandType) {
 	// Fetch the user_commands logs from the database
-	user_logs := mongo_client.Database("logs").Collection("user_commands")
+	user_logs := MONGO_CLIENT.Database("logs").Collection("user_commands")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -171,9 +170,9 @@ func get_user_command_logs(userid string, mongo_client *mongo.Client) (logs []Us
 	return logs
 }
 
-func get_quote_server_logs(userid string, mongo_client *mongo.Client) (logs []QuoteServerType) {
+func get_quote_server_logs(userid string) (logs []QuoteServerType) {
 	// Fetch the quote_server logs from the database
-	quote_server_logs := mongo_client.Database("logs").Collection("quote_server")
+	quote_server_logs := MONGO_CLIENT.Database("logs").Collection("quote_server")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -197,9 +196,9 @@ func get_quote_server_logs(userid string, mongo_client *mongo.Client) (logs []Qu
 	return logs
 }
 
-func get_account_transaction_logs(userid string, mongo_client *mongo.Client) (logs []AccountTransactionType) {
+func get_account_transaction_logs(userid string) (logs []AccountTransactionType) {
 	// Fetch the account_transaction logs from the database
-	account_transaction_logs := mongo_client.Database("logs").Collection("account_transactions")
+	account_transaction_logs := MONGO_CLIENT.Database("logs").Collection("account_transactions")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -223,9 +222,9 @@ func get_account_transaction_logs(userid string, mongo_client *mongo.Client) (lo
 	return logs
 }
 
-func get_system_event_logs(userid string, mongo_client *mongo.Client) (logs []SystemEventType) {
+func get_system_event_logs(userid string) (logs []SystemEventType) {
 	// Fetch the system_event logs from the database
-	system_event_logs := mongo_client.Database("logs").Collection("system_events")
+	system_event_logs := MONGO_CLIENT.Database("logs").Collection("system_events")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -249,9 +248,9 @@ func get_system_event_logs(userid string, mongo_client *mongo.Client) (logs []Sy
 	return logs
 }
 
-func get_error_event_logs(userid string, mongo_client *mongo.Client) (logs []ErrorEventType) {
+func get_error_event_logs(userid string) (logs []ErrorEventType) {
 	// Fetch the error logs from the database
-	error_logs := mongo_client.Database("logs").Collection("error_events")
+	error_logs := MONGO_CLIENT.Database("logs").Collection("error_events")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -275,9 +274,9 @@ func get_error_event_logs(userid string, mongo_client *mongo.Client) (logs []Err
 	return logs
 }
 
-func get_debug_event_logs(userid string, mongo_client *mongo.Client) (logs []DebugType) {
+func get_debug_event_logs(userid string) (logs []DebugType) {
 	// Fetch the error logs from the database
-	error_logs := mongo_client.Database("logs").Collection("debug_events")
+	error_logs := MONGO_CLIENT.Database("logs").Collection("debug_events")
 	filter := bson.D{{}}
 	if userid != "" {
 		filter = bson.D{{Key: "username", Value: userid}}
@@ -301,14 +300,14 @@ func get_debug_event_logs(userid string, mongo_client *mongo.Client) (logs []Deb
 	return logs
 }
 
-func Get_logs(userid string, mongo_client *mongo.Client) ([]byte, error) {
+func Get_logs(userid string) ([]byte, error) {
 	// Fetch the logs from the database
-	user_logs := get_user_command_logs(userid, mongo_client)
-	quote_server_logs := get_quote_server_logs(userid, mongo_client)
-	account_transaction_logs := get_account_transaction_logs(userid, mongo_client)
-	system_event_logs := get_system_event_logs(userid, mongo_client)
-	error_event_logs := get_error_event_logs(userid, mongo_client)
-	debug_event_logs := get_debug_event_logs(userid, mongo_client)
+	user_logs := get_user_command_logs(userid)
+	quote_server_logs := get_quote_server_logs(userid)
+	account_transaction_logs := get_account_transaction_logs(userid)
+	system_event_logs := get_system_event_logs(userid)
+	error_event_logs := get_error_event_logs(userid)
+	debug_event_logs := get_debug_event_logs(userid)
 
 	// Assemble the logs
 	log_container := Log{
