@@ -5,9 +5,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -19,24 +19,22 @@ import (
 // CONSTANTS:
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
-
-var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "quote-price-redis:6379")
-
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
-
-var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
-
 const RABBITMQ_TIMEOUT_SECONDS = 5
-
-var QUOTE_SERVER_ADDRESS = environment_variable_or_default("QUOTE_SERVER_ADDRESS", "quoteserve.seng.uvic.ca:4444")
-
 const QUOTE_SERVER_TIMEOUT_SECONDS = 2
+
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TriggerListener")
+var REDIS_CONNECTION_ADDRESS = Environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "quote-price-redis:6379")
+var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
+var QUOTE_SERVER_ADDRESS = Environment_variable_or_default("QUOTE_SERVER_ADDRESS", "quoteserve.seng.uvic.ca:4444")
+
+var MONGO_CLIENT = Connect_mongodb()
 
 // FUNCTIONS:
 func main() {
 	// This container should be started after the Redis and RabbitMQ containers using a health check
-	// However just in case we retry connecting to Redis and RabbitMQ a few times before giving up
 
 	// First connect to Redis. If we connect to RabbitMQ before Redis we may receive requests before the driver is ready to handle them
 	// TODO: Use some sort of password storage solution
@@ -47,10 +45,10 @@ func main() {
 	})
 
 	// Connect to RabbitMQ
-	rabbit_connection := connect_rabbitmq()
+	rabbit_connection := Connect_rabbitmq()
 	defer rabbit_connection.Close()
 	// Open a channel to communicate over
-	rabbitmq_channel := open_channel(rabbit_connection)
+	rabbitmq_channel := Open_rabbitmq_channel(rabbit_connection)
 	defer rabbitmq_channel.Close()
 
 	// Create an RPC queue if it doesn't exist already to wait for quote price requests
@@ -65,7 +63,8 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to declare a queue: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to declare a queue: "+err.Error())
+		panic(err)
 	}
 
 	// Use Quality of Service on the channel to limit the number of messages that can be in flight at once
@@ -77,7 +76,8 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to set QoS: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to set QoS: "+err.Error())
+		panic(err)
 	}
 
 	// Receive quote price requests through RabbitMQ by registering as a consumer
@@ -93,7 +93,8 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to register as consumer: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to register as consumer: "+err.Error())
+		panic(err)
 	}
 
 	var forever chan struct{}
@@ -116,42 +117,25 @@ func main() {
 			var command CommandMessage
 			err = json.Unmarshal(message.Body, &command)
 
-			if err != nil || command.Command == "" {
-				log.Printf(" [error] Failed to decode message: %s", err)
+			// Make sure the message is valid
+			if err != nil || command.Command == "" || command.Command != "QUOTE" || command.StockSymbol == "" || command.Userid == "" {
+				Log_error_event(command, fmt.Sprintf("Invalid Message received on quote server: %s Error: %s", string(message.Body), err.Error()))
 				message.Ack(false) // False = Only acknowledge the current message
 				continue
 			}
 
-			// Check that the message is valid
-			if command.Command != "QUOTE" {
-				log.Printf(" [error] Received invalid command on the quote driver: %s", command.Command)
-				message.Ack(false) // False = Only acknowledge the current message
-				continue
-			}
-
-			if command.StockSymbol == "" {
-				log.Printf(" [error] Received invalid stock symbol on the quote driver: %s", command.StockSymbol)
-				message.Ack(false) // False = Only acknowledge the current message
-				continue
-			}
-
-			if command.Userid == "" {
-				log.Printf(" [error] Received invalid username on the quote driver: %s", command.Userid)
-				message.Ack(false) // False = Only acknowledge the current message
-				continue
-			}
-
-			log.Printf(" [info] Received quote request from: %s for %s", command.Userid, command.StockSymbol)
+			Log_system_event(command)
 
 			// As more than  one message at a time can sit in the queue using a go routine would add unnecessary complexity
 			// If we begin accepting more than one message at a time we would need to add a goroutine to handle each message
 			quote := get_or_refresh_quote_price(redis_client, command.StockSymbol, command.Userid)
-			log.Printf(" [info] Got quote price: %f for %s for user %s", quote.QuotePrice, quote.StockSymbol, quote.Userid)
+			Log_quote_server(quote)
 
 			quote_bytes, err := json.Marshal(quote)
 
 			if err != nil {
-				log.Panicf(" [error] Failed to encode quote return: %s", err)
+				Log_error_event(command, "Failed to encode quote return: "+err.Error())
+				panic(err)
 			}
 
 			// Send the quote price back to the client
@@ -171,7 +155,8 @@ func main() {
 			)
 
 			if err != nil {
-				log.Panicf(" [error] Failed to send quote price: %s", err)
+				Log_error_event(command, "Failed to send quote price: "+err.Error())
+				panic(err)
 			}
 
 			// Acknowledge the message to remove it from the queue now that we have sent the response
@@ -180,19 +165,11 @@ func main() {
 	}()
 
 	log.Printf(" [info] Waiting for RPC. To exit press CTRL+C")
+	Log_debug_event(CommandMessage{}, "Started Quote Driver")
 	<-forever // Block forever to keep the program running while waiting for RPC requests
 }
 
 // HELPERS:
-func environment_variable_or_default(key string, def string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists || value == "" {
-		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
-		return def
-	}
-	return value
-}
-
 func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user string) QuoteReturn {
 	// Create a Context that creates a timeout for connecting to Redis
 	timeout_context, cancel := context.WithTimeout(context.Background(), REDIS_TIMEOUT_SECONDS*time.Second)
@@ -203,11 +180,12 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	get_new_quote := false
 
 	if err == redis.Nil {
-		log.Printf(" [info] Quote price for %s does not exist in Redis, Falling back to Quote Server", symbol)
+		Log_debug_event(CommandMessage{Command: "QUOTE", Userid: user, StockSymbol: symbol}, "Quote price for "+symbol+" does not exist in Redis, Falling back to Quote Server")
 		get_new_quote = true
 	} else if err != nil {
 		// TODO: Recover from this error, Retry getting the quote price from Redis
-		log.Panicf(" [error] Failed to get quote price for %s from Redis", symbol)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to get quote price for "+symbol+" from Redis: "+err.Error())
+		panic(err)
 	} else {
 		// If the value returned is empty then request the quote price from the Quote server
 		if value_string == "" {
@@ -217,12 +195,13 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 
 	// Redis has the quote price and it hasn't expired
 	if !get_new_quote {
-		log.Printf(" [info] Got quote price for %s from Redis", symbol)
+		Log_debug_event(CommandMessage{Command: "QUOTE", Userid: user, StockSymbol: symbol}, "Quote price for "+symbol+" does exist in Redis")
 		var quote QuoteReturn
 		err = json.Unmarshal([]byte(value_string), &quote)
 
 		if err != nil {
-			log.Panicf(" [error] Failed to decode quote response for %s from Redis", symbol)
+			Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to decode quote response for "+symbol+" from Redis: "+err.Error())
+			panic(err)
 		}
 
 		return quote
@@ -240,17 +219,18 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	quote.QuotePrice, err = strconv.ParseFloat(value_string_split[0], 64)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to parse quote price for %s from Quote Server", symbol)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to parse quote price for "+symbol+" from Quote Server: "+err.Error())
+		panic(err)
 	}
 
 	quote.StockSymbol = value_string_split[1]
 	quote.Userid = value_string_split[2]
 	// Parse the int64 timestamp
-	log.Printf(" [DEBUG] timestamp: value_string_split[3] = %s", value_string_split[3])
 	timestamp_ms, err := strconv.ParseInt(value_string_split[3], 10, 64)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to parse timestamp for %s from Quote Server", symbol)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to parse timestamp for "+symbol+" from Quote Server: "+err.Error())
+		panic(err)
 	}
 
 	quote.Timestamp = time.UnixMilli(timestamp_ms)
@@ -260,7 +240,8 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 	value_bytes, err := json.Marshal(quote)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to encode quote return: %s", err)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to encode quote return for "+symbol+" from Quote Server: "+err.Error())
+		panic(err)
 	}
 
 	// QuoteReturn successfully parsed, put it into Redis
@@ -268,7 +249,8 @@ func get_or_refresh_quote_price(redis_client *redis.Client, symbol string, user 
 
 	if err != nil {
 		// TODO: Recover from this error, Retry setting the quote price from Redis
-		log.Panicf(" [error] Failed to set quote price for %s in Redis", symbol)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to set quote price for "+symbol+" in Redis: "+err.Error())
+		panic(err)
 	}
 
 	return quote
@@ -280,14 +262,16 @@ func query_quote_server(symbol string, user string) string {
 	conn, err := dialer.Dial("tcp", QUOTE_SERVER_ADDRESS)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to connect to quote server: %s", err)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to connect to quote server: "+err.Error())
+		panic(err)
 	}
 
 	// Send the symbol and user pair to the quote server
 	_, err = conn.Write([]byte(symbol + " " + user))
 
 	if err != nil {
-		log.Panicf(" [error] Failed to send: %s to quote server: %s", symbol+" "+user, err)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to send: "+symbol+" "+user+" to quote server: "+err.Error())
+		panic(err)
 	}
 
 	// Read the response from the quote server
@@ -296,43 +280,9 @@ func query_quote_server(symbol string, user string) string {
 	_, err = conn.Read(response)
 
 	if err != nil {
-		log.Panicf(" [error] Failed to read response from quote server: %s", err)
+		Log_error_event(CommandMessage{Userid: user, StockSymbol: symbol}, "Failed to read response from quote server: "+err.Error())
+		panic(err)
 	}
 
 	return string(response)
-}
-
-// RETRY FUNCTIONS:
-// Connect to RabbitMQ and retry if it fails
-func connect_rabbitmq() *amqp.Connection {
-	conn, err := amqp.Dial(RABBITMQ_CONNECTION_STRING)
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to connect to '%s', retrying in %d seconds", RABBITMQ_CONNECTION_STRING, TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		conn, err = amqp.Dial(RABBITMQ_CONNECTION_STRING)
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return conn
-}
-
-// Open a channel to communicate over and retry if it fails
-func open_channel(rabbit_connection *amqp.Connection) *amqp.Channel {
-	channel, err := rabbit_connection.Channel()
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to open a channel, retrying in %d seconds", TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		channel, err = rabbit_connection.Channel()
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return channel
 }
