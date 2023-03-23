@@ -102,6 +102,7 @@ services:
     build:
       context: ./timo-web-server/
       dockerfile: web_server_dockerfile
+    restart: on-failure
     ports:
       - 8080:8080
     healthcheck:
@@ -249,6 +250,7 @@ services:
     build:
       context: ./timo-web-server/
       dockerfile: web_server_dockerfile
+    restart: on-failure
     depends_on:
       rabbitmq-dev:
         condition: service_healthy
