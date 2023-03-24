@@ -2,8 +2,9 @@ const express = require("express");
 const cors = require('cors');
 const app = express();
 const bodyParser = require('body-parser');
-const amqp = require('amqplib/callback_api')
-const commandQueue = 'command_queue'
+const amqp = require('amqplib/callback_api');
+const commandQueue = 'command_queue';
+const rabbitConnect = 'amqp://guest:guest@rabbitmq-dev:5672';
 
 // Format operations for transaction server
 const formatOperation = (data) => {
@@ -49,20 +50,32 @@ const formatOperation = (data) => {
   return operationDict;
 
 }
-// Send data to Rabbit Queue
+
 const sendToRabbit = (data) => {
-  amqp.connect('amqp://guest:guest@rabbitmq-dev', (err, conn) => {
+  amqp.connect(rabbitConnect, (err, conn) => {
     if (err) throw err;
+    console.log("Successfully conected to rabbit on: ", rabbitConnect);
+
     conn.createChannel((err, channel) => {
       if (err) throw err;
       
       channel.assertQueue(commandQueue);
-
-      channel.sendToQueue(commandQueue, Buffer.from(JSON.stringify(data)));
-      conn.close()
+      console.log("Successfully connected to: ", commandQueue);
+      channel.prefetch(10);
+      for (var i = 0; i < data.length; i++) {
+        channel.sendToQueue(commandQueue, Buffer.from(JSON.stringify(data[i])), {mandatory:true}, (sendErr, ok) => {
+          if (sendErr) throw sendErr;
+          console.log("Sent operation");
+          // channel.waitForConfirms((confirmErr) => {
+          //   if (confirmErr) throw confirmErr;
+          //   console.log('All messages confirmed: ', data[i]);
+          // });
+        });
+      }
     });
   });
 }
+
 const corsOptions = {
   origin: 'http://localhost'
 }
@@ -77,13 +90,11 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 // Operation File received
 app.post('/send-data', configuredCors, (req, res) => {
   const data = req.body.data;
-  const operations = data.split("\r\n")
-  for (var i = 0; i < operations.length; i++) {
-    operation = operations[i]
-    if (operation.trim() == '') continue;
-    sendToRabbit(formatOperation(operation))
-  }
-  
+  const operations = data.split("\r\n");
+  // Remove last empty line 
+  operations.pop();
+  for (var i = 0; i < operations.length; i++) operations[i] = formatOperation(operations[i]);
+  sendToRabbit(operations);
 }
 );
 

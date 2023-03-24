@@ -13,6 +13,8 @@ const sendOperationFile = (msg) => {
     body: JSON.stringify({data: msg})
   }).then(function(response) {
     console.log(response.body)
+  }).catch(error => {
+    console.error(error);
   });
 }
 
