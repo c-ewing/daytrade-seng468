@@ -263,3 +263,152 @@ services:
         - 8080:8080
       profiles:
         - dev
+
+  ######## DATABASE ########
+
+  cfgsvr1:
+    container_name: cfgsvr1
+    image: mongo
+    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
+    ports:
+      - 40001:27017
+    volumes:
+      - cfgsvr1:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.2
+
+  cfgsvr2:
+    container_name: cfgsvr2
+    image: mongo
+    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
+    ports:
+      - 40002:27017
+    volumes:
+      - cfgsvr2:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.3
+
+  cfgsvr3:
+    container_name: cfgsvr3
+    image: mongo
+    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
+    ports:
+      - 40003:27017
+    volumes:
+      - cfgsvr3:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.4
+
+
+  shard1svr1:
+    container_name: shard1svr1
+    image: mongo
+    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
+    ports:
+      - 50001:27017
+    volumes:
+      - shard1svr1:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.6
+
+  shard1svr2:
+    container_name: shard1svr2
+    image: mongo
+    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
+    ports:
+      - 50002:27017
+    volumes:
+      - shard1svr2:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.7
+
+  shard1svr3:
+    container_name: shard1svr3
+    image: mongo
+    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
+    ports:
+      - 50003:27017
+    volumes:
+      - shard1svr3:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.8
+
+  shard2svr1:
+    container_name: shard2svr1
+    image: mongo
+    command: mongod --shardsvr --replSet shard2rs --port 27017 --dbpath /data/db
+    ports:
+      - 50004:27017
+    volumes:
+      - shard2svr1:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.9
+
+  shard2svr2:
+    container_name: shard2svr2
+    image: mongo
+    command: mongod --shardsvr --replSet shard2rs --port 27017 --dbpath /data/db
+    ports:
+      - 50005:27017
+    volumes:
+      - shard2svr2:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.10
+
+  shard2svr3:
+    container_name: shard2svr3
+    image: mongo
+    command: mongod --shardsvr --replSet shard2rs --port 27017 --dbpath /data/db
+    ports:
+      - 50006:27017
+    volumes:
+      - shard2svr3:/data/db
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.11
+
+  timoserver:
+      container_name: timoserver
+      image: mongo
+      # network_mode: timo-docker-network
+      volumes:
+          - 'timoserver:/data/db'
+      networks:
+        timo-docker-network:
+          ipv4_address: 10.5.0.12
+
+  mongos:
+    container_name: mongos
+    image: mongo
+    command: mongos --configdb cfgrs/10.5.0.2:27017,10.5.0.3:27017,10.5.0.4:27017 --port 27011
+    networks:
+      timo-docker-network:
+        ipv4_address: 10.5.0.5
+
+volumes:
+  cfgsvr1: {}
+  cfgsvr2: {}
+  cfgsvr3: {}
+  shard1svr1: {}
+  shard1svr2: {}
+  shard1svr3: {}
+  shard2svr1: {}
+  shard2svr2: {}
+  shard2svr3: {}
+  timoserver: {}
+  
+networks:
+  timo-docker-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+          gateway: 10.5.0.1
