@@ -265,17 +265,72 @@ services:
     profiles:
       - dev
 
-  web-interface-dev:
+  web-interface1-dev:
     build:
       context: ./timo-web-interface/
-      dockerfile: web_dockerfile
+      dockerfile: web_dockerfile_dev
     ports:
-      - 80:80
+      - 3001:3001
     depends_on:
+      nginx-dev:
+        condition: service_started
       web-server-dev:
         condition: service_healthy
     profiles:
       - dev
+    restart: on-failure
+    networks:
+      - loadbalancer
+
+  web-interface2-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile_dev
+    ports:
+      - 3002:3002
+    depends_on:
+      nginx-dev:
+        condition: service_started
+      web-server-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: on-failure
+    networks:
+      - loadbalancer
+
+  web-interface3-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile_dev
+    ports:
+      - 3003:3003
+    depends_on:
+      nginx-dev:
+        condition: service_started
+      web-server-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: on-failure
+    networks:
+      - loadbalancer
+
+  nginx-dev:
+    image: nginx:1.21.3-alpine
+    volumes:
+      - ./timo-web-interface/nginx-dev.conf:/etc/nginx/nginx.conf
+    ports:
+      - 80:80
+    profiles:
+      - dev
+    restart: on-failure
+    depends_on:
+      - web-interface1-dev
+      - web-interface2-dev
+      - web-interface3-dev
+    networks:
+      - loadbalancer
 
   transaction-server-dev:
     build:
