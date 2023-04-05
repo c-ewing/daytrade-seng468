@@ -5,7 +5,7 @@ import { useState } from 'react';
 
 function AddFunds(props) {
     const [inputValue, setInputValue] = useState(0);
-
+    
     const handleChange = (event) => {
         const newValue = event.target.value;
         if (isNaN(newValue)) {
@@ -19,6 +19,22 @@ function AddFunds(props) {
     const handleClick = () => {
         var newBalance = parseFloat(props.accountBalance) + parseFloat(inputValue);
         props.setBalance(newBalance.toFixed(2));
+        
+        var operation = `[1] ADD,${props.username},${parseFloat(inputValue)}`;
+
+        fetch('http://localhost:8080/send-data', {
+
+        headers: {
+            'Content-Type': 'application/json;charset=UTF-8'
+            },
+            method: 'POST',
+            body: JSON.stringify({data: operation})
+        }).then(function(response) {
+            console.log(response.body)
+        }).catch(error => {
+            console.error(error);
+        });
+
     };
 
     return (

@@ -17,6 +17,7 @@ function GetStockQuote(props) {
         // Get Stock quote from server
         // TODO
         // If Stock exists, show price and render buy option. If not, give alert
+        var operation = `[1] QUOTE,${props.username},${stockSym}`; 
         setStockPrice(1.12);
         setCanBuy(true);
     };
