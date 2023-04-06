@@ -1,4 +1,4 @@
-package main
+package timo
 
 import (
 	"context"
@@ -62,10 +62,10 @@ func Environment_variable_or_default(key string, def string) string {
 // ### MongoDB ###
 
 // Connect to MongoDB
-func Connect_mongodb() *mongo.Client {
+func Connect_mongodb(connection_string string) *mongo.Client {
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI(MONGODB_CONNECTION_STRING).SetServerAPIOptions(serverAPI)
+	opts := options.Client().ApplyURI(connection_string).SetServerAPIOptions(serverAPI)
 
 	// Create a new mongo_client and connect to the server
 	mongo_client, err := mongo.Connect(context.TODO(), opts)
@@ -79,19 +79,16 @@ func Connect_mongodb() *mongo.Client {
 // ### RabbitMQ ###
 
 // Connect to RabbitMQ
-func Connect_rabbitmq() *amqp.Connection {
-	conn, err := amqp.Dial(RABBITMQ_CONNECTION_STRING)
+func Connect_rabbitmq(connection_string string, time_between_retry int, max_retry int) *amqp.Connection {
+	conn, err := amqp.Dial(connection_string)
 
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		warn := "Failed to connect to '" + RABBITMQ_CONNECTION_STRING + "', retrying in " + fmt.Sprint(TIME_BETWEEN_RETRIES_SECONDS) + " seconds"
-		Log_debug_event(CommandMessage{}, warn)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		conn, err = amqp.Dial(RABBITMQ_CONNECTION_STRING)
+	for i := 0; i < max_retry && err != nil; i++ {
+		time.Sleep(time.Second * time.Duration(time_between_retry))
+		conn, err = amqp.Dial(connection_string)
 	}
 
 	if err != nil {
-		e := "Failed to connect to '" + RABBITMQ_CONNECTION_STRING + "' after " + fmt.Sprint(MAX_CONNECTION_RETRIES) + " retries: " + err.Error()
-		Log_error_event(CommandMessage{}, e)
+		println("Failed to connect to '" + connection_string + "' after " + fmt.Sprint(max_retry) + " retries: " + err.Error())
 		panic(err)
 	}
 
@@ -99,19 +96,16 @@ func Connect_rabbitmq() *amqp.Connection {
 }
 
 // Open a channel to communicate over and retry if it fails
-func Open_rabbitmq_channel(rabbit_connection *amqp.Connection) *amqp.Channel {
+func Open_rabbitmq_channel(rabbit_connection *amqp.Connection, time_between_retry int, max_retry int) *amqp.Channel {
 	channel, err := rabbit_connection.Channel()
 
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		warn := "Failed to open a channel, retrying in " + fmt.Sprint(TIME_BETWEEN_RETRIES_SECONDS) + " seconds"
-		Log_debug_event(CommandMessage{}, warn)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
+	for i := 0; i < max_retry && err != nil; i++ {
+		time.Sleep(time.Second * time.Duration(time_between_retry))
 		channel, err = rabbit_connection.Channel()
 	}
 
 	if err != nil {
-		e := "Failed to open a channel after " + fmt.Sprint(MAX_CONNECTION_RETRIES) + " retries: " + err.Error()
-		Log_error_event(CommandMessage{}, e)
+		println("Failed to open a channel after " + fmt.Sprint(max_retry) + " retries: " + err.Error())
 		panic(err)
 	}
 
@@ -207,9 +201,9 @@ func Get_stock_price(symbol string, user string, rabbitmq_channel *amqp.Channel)
 	return
 }
 
-func Get_user_account(userid string) (User, error) {
+func Get_user_account(mongo *mongo.Client, userid string) (User, error) {
 	// Fetch the users current information from the database
-	user_accounts := MONGO_CLIENT.Database("users").Collection("accounts")
+	user_accounts := mongo.Database("users").Collection("accounts")
 	filter := bson.D{{Key: "_id", Value: userid}}
 
 	// Query for the user using the user id
@@ -219,10 +213,10 @@ func Get_user_account(userid string) (User, error) {
 	return user, err
 }
 
-func Get_last_transaction(userid string, transaction_type string) (Transaction, error) {
-	Log_debug_event(CommandMessage{Userid: userid, Command: "DISPLAY_SUMMARY"}, "Fetching last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD")
+func Get_last_transaction(mongo *mongo.Client, server string, userid string, transaction_type string) (Transaction, error) {
+	Log_debug_event(mongo, server, CommandMessage{Userid: userid, Command: "DISPLAY_SUMMARY"}, "Fetching last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD")
 	// Fetch the users current information from the database
-	user_transactions := MONGO_CLIENT.Database("users").Collection("transactions")
+	user_transactions := mongo.Database("users").Collection("transactions")
 	filter := bson.M{"userid": userid, "transaction_type": transaction_type, "transaction_completed": false, "transaction_cancelled": false, "transaction_expired": false}
 	sort := bson.D{{Key: "transaction_start_timestamp", Value: 1}}
 	opts := options.Find().SetSort(sort)
@@ -231,7 +225,7 @@ func Get_last_transaction(userid string, transaction_type string) (Transaction, 
 	cursor, err := user_transactions.Find(context.Background(), filter, opts)
 	if err != nil {
 		e := "Error querying for user " + userid + "'s last transaction: " + err.Error()
-		Log_error_event(CommandMessage{Userid: userid}, e)
+		Log_error_event(mongo, server, CommandMessage{Userid: userid}, e)
 		return Transaction{}, err
 	}
 
@@ -240,7 +234,7 @@ func Get_last_transaction(userid string, transaction_type string) (Transaction, 
 
 	if err != nil {
 		e := "Error decoding user " + userid + "'s last transaction: " + err.Error()
-		Log_error_event(CommandMessage{Userid: userid}, e)
+		Log_error_event(mongo, server, CommandMessage{Userid: userid}, e)
 		return Transaction{}, err
 	}
 
@@ -251,15 +245,15 @@ func Get_last_transaction(userid string, transaction_type string) (Transaction, 
 			transactions[i].Transaction_expired = true
 			transactions[i].Transaction_completed = false
 			transactions[i].Transaction_cancelled = false
-			Upsert_transaction(transactions[i])
-			Log_system_event(CommandMessage{Command: "EXPIRE", TransactionNumber: transactions[i].Transaction_number, Userid: transactions[i].Userid, StockSymbol: transactions[i].Stock_symbol, Amount: transactions[i].Transaction_amount})
+			Upsert_transaction(mongo, server, transactions[i])
+			Log_system_event(mongo, server, CommandMessage{Command: "EXPIRE", TransactionNumber: transactions[i].Transaction_number, Userid: transactions[i].Userid, StockSymbol: transactions[i].Stock_symbol, Amount: transactions[i].Transaction_amount})
 		}
 	}
 
 	// Return the first not expired transaction
 	for _, transaction := range transactions {
 		if !transaction.Transaction_expired {
-			Log_debug_event(CommandMessage{Userid: userid, Command: "DISPLAY_SUMMARY"}, "Returning last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD")
+			Log_debug_event(mongo, server, CommandMessage{Userid: userid, Command: "DISPLAY_SUMMARY"}, "Returning last "+transaction_type+" transaction for user; Command is inaccurate, here to satisfy the XSD")
 			return transaction, nil
 		}
 	}
@@ -267,41 +261,41 @@ func Get_last_transaction(userid string, transaction_type string) (Transaction, 
 	return Transaction{}, err
 }
 
-func Upsert_user_account(user User) {
+func Upsert_user_account(mongo *mongo.Client, server string, user User) {
 	// Write back to the database
 	// We want to either insert or update, MongoDB supports Upsert for this
 	options := options.Update().SetUpsert(true)
 
-	user_accounts := MONGO_CLIENT.Database("users").Collection("accounts")
+	user_accounts := mongo.Database("users").Collection("accounts")
 	filter := bson.D{{Key: "_id", Value: user.Userid}}
 
 	_, err := user_accounts.UpdateOne(context.Background(), filter, bson.D{{Key: "$set", Value: user}}, options)
 
 	if err != nil {
 		e := "Error updating user " + user.Userid + "'s account: " + err.Error()
-		Log_error_event(CommandMessage{Userid: user.Userid}, e)
+		Log_error_event(mongo, server, CommandMessage{Userid: user.Userid}, e)
 		panic(err)
 	}
 
 }
 
-func Upsert_transaction(transaction Transaction) {
+func Upsert_transaction(mongo *mongo.Client, server string, transaction Transaction) {
 	// Write back to the database
 	// We want to either insert or update, MongoDB supports Upsert for this
 	options := options.Update().SetUpsert(true)
 
-	transactions := MONGO_CLIENT.Database("users").Collection("transactions")
+	transactions := mongo.Database("users").Collection("transactions")
 	filter := bson.D{{Key: "userid", Value: transaction.Userid}, {Key: "transaction_number", Value: transaction.Transaction_number}}
 
 	_, err := transactions.UpdateOne(context.Background(), filter, bson.D{{Key: "$set", Value: transaction}}, options)
 
 	if err != nil {
 		e := "Error updating transaction " + transaction.Userid + "," + strconv.Itoa(int(transaction.Transaction_number)) + ": " + err.Error()
-		Log_error_event(CommandMessage{Command: "", TransactionNumber: transaction.Transaction_number, Userid: transaction.Userid, StockSymbol: transaction.Stock_symbol, Amount: transaction.Transaction_amount}, e)
+		Log_error_event(mongo, server, CommandMessage{Command: "", TransactionNumber: transaction.Transaction_number, Userid: transaction.Userid, StockSymbol: transaction.Stock_symbol, Amount: transaction.Transaction_amount}, e)
 		panic(err)
 	}
 
-	Log_debug_event(CommandMessage{Command: "", TransactionNumber: transaction.Transaction_number, Userid: transaction.Userid, StockSymbol: transaction.Stock_symbol, Amount: transaction.Transaction_amount}, "Updated/Created transaction: "+strconv.Itoa(int(transaction.Transaction_number)))
+	Log_debug_event(mongo, server, CommandMessage{Command: "", TransactionNumber: transaction.Transaction_number, Userid: transaction.Userid, StockSymbol: transaction.Stock_symbol, Amount: transaction.Transaction_amount}, "Updated/Created transaction: "+strconv.Itoa(int(transaction.Transaction_number)))
 }
 
 func RandomString(l int) string {

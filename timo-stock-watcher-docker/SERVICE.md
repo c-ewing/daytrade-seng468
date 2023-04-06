@@ -8,7 +8,7 @@ This is an **internal** service that has no communication with the end user. Thi
 
 ## Broadcast:
 
-This service broadcasts stock price updates to the `stock_price_updates` exchange. Each update uses the stock symbol as the routing key to enable consumers to only subscribe to price updates that are relevant to their functionality.
+This service broadcasts stock price updates to the `stock_price_updates` exchange. Each update uses `stock.symbol` as the topic to enable consumers to only subscribe to price updates that are relevant to their functionality.
 
 The broadcast is a simple forwarding of the response from the *Quote Driver(s)* sorted with the correct routing key. As such the broadcast takes the form:
 

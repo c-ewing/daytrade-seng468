@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -86,7 +85,7 @@ func main() {
 	// TODO: Add a retry loop here
 	err = rabbitmq_channel.ExchangeDeclare(
 		"stock_price_updates", // name of the exchange
-		"direct",              // type of exchange
+		"topic",               // type of exchange
 		true,                  // durable
 		false,                 // delete when complete
 		false,                 // internal
@@ -103,7 +102,7 @@ func main() {
 	ticker := time.NewTicker(PRICE_REFRESH_FREQUENCY_SECONDS * time.Second)
 
 	// Correlation ID for the RPC calls:
-	corrId := randomString(32)
+	corrId := RandomString(32)
 
 	var forever chan struct{}
 
@@ -149,11 +148,11 @@ func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan 
 
 		// Broadcast the stock price update to the exchange
 		err = rabbitmq_channel.PublishWithContext(
-			rabbitmq_timeout,       // context
-			"stock_price_updates",  // exchange
-			rpc_return.StockSymbol, // routing key
-			false,                  // mandatory
-			false,                  // immediate
+			rabbitmq_timeout,      // context
+			"stock_price_updates", // exchange
+			fmt.Sprintf("stock.%s", rpc_return.StockSymbol), // routing key
+			false, // mandatory
+			false, // immediate
 			amqp.Publishing{
 				ContentType: "text/plain",
 				Body:        message.Body, // Use the same message body as the RPC return, basically just sorting into the correct queue
@@ -167,18 +166,6 @@ func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan 
 
 		cancel()
 	}
-}
-
-func randomString(l int) string {
-	bytes := make([]byte, l)
-	for i := 0; i < l; i++ {
-		bytes[i] = byte(randInt(65, 90))
-	}
-	return string(bytes)
-}
-
-func randInt(min int, max int) int {
-	return min + rand.Intn(max-min)
 }
 
 func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel *amqp.Channel, corrId string, rpc_return_queue amqp.Queue) {

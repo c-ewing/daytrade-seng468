@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-######## PRODUCTION ########
+  ######## PRODUCTION ########
   mongodb:
     image: mongo:latest
     ports:
@@ -19,7 +19,7 @@ services:
       - production
 
   quote-price-redis:
-    build: 
+    build:
       context: ./timo-redis-docker/
       dockerfile: redis_dockerfile
     ports:
@@ -34,7 +34,7 @@ services:
       - production
 
   trigger-symbol-redis:
-    build: 
+    build:
       context: ./timo-redis-docker/
       dockerfile: redis_dockerfile
     ports:
@@ -49,7 +49,7 @@ services:
       - production
 
   rabbitmq:
-    build: 
+    build:
       context: ./timo-rabbitmq-docker/
       dockerfile: rabbitmq_dockerfile
     ports:
@@ -65,7 +65,7 @@ services:
       - production
 
   quote-driver:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
     depends_on:
@@ -84,7 +84,7 @@ services:
       - production
 
   trigger-driver:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-trigger-driver-docker/trigger_driver_dockerfile
     depends_on:
@@ -103,7 +103,7 @@ services:
       - production
 
   trigger-listener:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-trigger-listener-docker/trigger_listener_dockerfile
     depends_on:
@@ -122,7 +122,7 @@ services:
       - production
 
   stock-watcher:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-stock-watcher-docker/stock_watcher_dockerfile
     depends_on:
@@ -155,7 +155,7 @@ services:
       - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
     profiles:
       - production
-    
+
   web-interface:
     build:
       context: ./timo-web-interface/
@@ -174,8 +174,7 @@ services:
     profiles:
       - production
 
-
-######## DEVELOPMENT ########
+  ######## DEVELOPMENT ########
   mongodb-dev:
     image: mongo:latest
     ports:
@@ -193,7 +192,7 @@ services:
       - dev
 
   quote-price-redis-dev:
-    build: 
+    build:
       context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
     ports:
@@ -209,7 +208,7 @@ services:
       - dev
 
   trigger-symbol-redis-dev:
-    build: 
+    build:
       context: ./timo-redis-docker/
       dockerfile: redis_dev_dockerfile
     ports:
@@ -223,9 +222,9 @@ services:
       start_period: 15s
     profiles:
       - dev
-  
+
   rabbitmq-dev:
-    build: 
+    build:
       context: ./timo-rabbitmq-docker/
       dockerfile: rabbitmq_dockerfile
     ports:
@@ -241,7 +240,7 @@ services:
       - dev
 
   quote-driver-dev:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-quote-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-quote-driver-docker/quote_driver_dockerfile
     depends_on:
@@ -254,13 +253,13 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=quote-price-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
       - QUOTE_SERVER_ADDRESS=host.docker.internal:4444
     profiles:
       - dev
 
   trigger-driver-dev:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-trigger-driver-docker/trigger_driver_dockerfile
     depends_on:
@@ -273,12 +272,12 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
     profiles:
       - dev
 
   trigger-listener-dev:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-trigger-listener-docker/trigger_listener_dockerfile
     depends_on:
@@ -291,12 +290,12 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
     profiles:
       - dev
 
   stock-watcher-dev:
-    build: 
+    build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
       dockerfile: ./timo-stock-watcher-docker/stock_watcher_dockerfile
     depends_on:
@@ -309,7 +308,7 @@ services:
     environment:
       - REDIS_CONNECTION_ADDRESS=trigger-symbol-redis-dev:6379
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
     profiles:
       - dev
 
@@ -326,10 +325,10 @@ services:
         condition: service_started
     environment:
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb-dev:27017/?retryWrites=true&w=majority
+      - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
     profiles:
       - dev
-      
+
   web-interface-dev:
     build:
       context: ./timo-web-interface/
@@ -342,12 +341,12 @@ services:
       - dev
 
   web-server-dev:
-      build:
-        context: ./timo-web-server/
-        dockerfile: web_server_dockerfile
-      ports:
-        - 8080:8080
-      depends_on:
-        - transaction-server-dev
-      profiles:
-        - dev
+    build:
+      context: ./timo-web-server/
+      dockerfile: web_server_dockerfile
+    ports:
+      - 8080:8080
+    depends_on:
+      - transaction-server-dev
+    profiles:
+      - dev

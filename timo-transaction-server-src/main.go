@@ -97,7 +97,7 @@ func process_messages(msgs <-chan amqp.Delivery, rabbitmq_channel *amqp.Channel)
 
 		if err != nil {
 			Log_error_event(CommandMessage{}, fmt.Sprintf("Error unmarshalling message: %s", err))
-			message.Ack(false)
+			message.Reject(false)
 			continue
 		}
 
