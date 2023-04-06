@@ -11,12 +11,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Log levels:
-const ERROR = 0
-const WARNING = 1
-const INFO = 2
-const DEBUG = 3
-
 // LOG FUNCTIONS:
 func Log_user_command(command CommandMessage) {
 	// Form the user command
@@ -60,7 +54,7 @@ func Log_quote_server(quote QuoteReturn) {
 	}
 }
 
-func Log_account_transaction(transaction_num int64, action string, username string, funds float64) {
+func Log_account_transaction(server string, transaction_num int64, action string, username string, funds float64) {
 	// Form the account transaction
 	account_transaction := AccountTransactionType{
 		Timestamp:      time.Now().Unix(),

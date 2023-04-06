@@ -5,9 +5,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
-	"math/rand"
-	"os"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -17,17 +16,18 @@ import (
 // CONSTANTS:
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
-
-var TRIGGER_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
-
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
-
-var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
-
 const RABBITMQ_TIMEOUT_SECONDS = 5
 
 const PRICE_REFRESH_FREQUENCY_SECONDS = 5
+
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "StockWatcher")
+var TRIGGER_CONNECTION_ADDRESS = Environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
+var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
+
+var MONGO_CLIENT = Connect_mongodb()
 
 // FUNCTIONS:
 func main() {
@@ -43,10 +43,10 @@ func main() {
 	})
 
 	// Connect to RabbitMQ
-	rabbit_connection := connect_rabbitmq()
+	rabbit_connection := Connect_rabbitmq()
 	defer rabbit_connection.Close()
 	// Open a channel to communicate over
-	rabbitmq_channel := open_channel(rabbit_connection)
+	rabbitmq_channel := Open_rabbitmq_channel(rabbit_connection)
 	defer rabbitmq_channel.Close()
 
 	// Create a queue if it doesn't exist already
@@ -61,7 +61,8 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("[error] Failed to declare a queue: %s", err)
+		Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to declare a queue: %s", err))
+		panic(err)
 	}
 
 	// Create a consumer to listen for RPC returns
@@ -76,14 +77,15 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("[error] Failed to register a consumer: %s", err)
+		Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to register a consumer: %s", err))
+		panic(err)
 	}
 
 	// Create a new Exchange to broadcast stock price updates
 	// TODO: Add a retry loop here
 	err = rabbitmq_channel.ExchangeDeclare(
 		"stock_price_updates", // name of the exchange
-		"direct",              // type of exchange
+		"topic",               // type of exchange
 		true,                  // durable
 		false,                 // delete when complete
 		false,                 // internal
@@ -92,14 +94,15 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("[error] Failed to declare an exchange: %s", err)
+		Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to declare an exchange: %s", err))
+		panic(err)
 	}
 
 	// Create a ticker to trigger a refresh every PRICE_REFRESH_FREQUENCY_SECONDS seconds:
 	ticker := time.NewTicker(PRICE_REFRESH_FREQUENCY_SECONDS * time.Second)
 
 	// Correlation ID for the RPC calls:
-	corrId := randomString(32)
+	corrId := RandomString(32)
 
 	var forever chan struct{}
 
@@ -108,32 +111,24 @@ func main() {
 		// Refresh the stock prices every PRICE_REFRESH_FREQUENCY_SECONDS seconds
 		for range ticker.C {
 			// Refresh the stock prices
-			log.Printf(" [info] Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
+			// log.Printf(" [info] Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
 			refresh_trigger_stock_prices(trigger_redis, rabbitmq_channel, corrId, rpc_return_queue)
-			log.Printf(" [info] Finished Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
+			// log.Printf(" [info] Finished Refreshing Stock Prices: %s", time.Now().Format(time.RFC850))
 		}
 	}()
 
 	go price_broadcast(corrId, rabbitmq_channel, msgs)
 
 	log.Printf(" [info] Started Stock Watcher. To exit press CTRL+C")
+	Log_debug_event(CommandMessage{}, "Started Stock Watcher")
 	<-forever // Block forever to keep the program running
 }
 
 // HELPER FUNCTIONS:
-func environment_variable_or_default(key string, def string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists || value == "" {
-		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
-		return def
-	}
-	return value
-}
-
 func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan amqp.Delivery) {
 	for message := range msgs {
-		log.Printf("Here: %d", len(msgs))
 		if corrId != message.CorrelationId {
+			message.Reject(true)
 			continue
 		}
 
@@ -142,21 +137,22 @@ func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan 
 		err := json.Unmarshal(message.Body, &rpc_return)
 
 		if err != nil {
-			log.Panicf("[error] Failed to parse RPC return: %s", err)
+			Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to parse RPC return: %s", err))
+			panic(err)
 		}
 
-		log.Printf(" [info] Broadcasting Stock Price Update: %s is %f", rpc_return.StockSymbol, rpc_return.QuotePrice)
+		// log.Printf(" [info] Broadcasting Stock Price Update: %s is %f", rpc_return.StockSymbol, rpc_return.QuotePrice)
 
 		// Create a context that times out after RABBITMQ_TIMEOUT_SECONDS seconds
 		rabbitmq_timeout, cancel := context.WithTimeout(context.Background(), RABBITMQ_TIMEOUT_SECONDS*time.Second)
 
 		// Broadcast the stock price update to the exchange
 		err = rabbitmq_channel.PublishWithContext(
-			rabbitmq_timeout,       // context
-			"stock_price_updates",  // exchange
-			rpc_return.StockSymbol, // routing key
-			false,                  // mandatory
-			false,                  // immediate
+			rabbitmq_timeout,      // context
+			"stock_price_updates", // exchange
+			fmt.Sprintf("stock.%s", rpc_return.StockSymbol), // routing key
+			false, // mandatory
+			false, // immediate
 			amqp.Publishing{
 				ContentType: "text/plain",
 				Body:        message.Body, // Use the same message body as the RPC return, basically just sorting into the correct queue
@@ -164,23 +160,12 @@ func price_broadcast(corrId string, rabbitmq_channel *amqp.Channel, msgs <-chan 
 		)
 
 		if err != nil {
-			log.Panicf("[error] Failed to publish triggered stock price update message: %s", err)
+			Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to publish triggered stock price update message: %s", err))
+			panic(err)
 		}
 
 		cancel()
 	}
-}
-
-func randomString(l int) string {
-	bytes := make([]byte, l)
-	for i := 0; i < l; i++ {
-		bytes[i] = byte(randInt(65, 90))
-	}
-	return string(bytes)
-}
-
-func randInt(min int, max int) int {
-	return min + rand.Intn(max-min)
 }
 
 func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel *amqp.Channel, corrId string, rpc_return_queue amqp.Queue) {
@@ -192,10 +177,9 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 	symbols, err := trigger_redis.Keys(trigger_timeout, "*").Result()
 
 	if err != nil {
-		log.Panicf("[error] Failed to get symbols from Trigger Symbol Redis: %s", err)
+		Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to get symbols from Trigger Symbol Redis: %s", err))
+		panic(err)
 	}
-
-	log.Printf(" [debug] Updating prices for: %s", symbols)
 
 	// Loop through all the symbols and update their prices
 	for _, symbol := range symbols {
@@ -207,7 +191,8 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 		user, err := trigger_redis.SRandMember(user_timeout, symbol).Result()
 
 		if err != nil {
-			log.Panicf("[error] Failed to get a random user for %s from Trigger Symbol Redis: %s", symbol, err)
+			Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to get a random user for %s from Trigger Symbol Redis: %s", symbol, err))
+			panic(err)
 		}
 
 		// Update the price for this symbol
@@ -215,7 +200,7 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 
 		// Send a message to the quote_price_requests queue to get the price for this symbol
 
-		log.Printf(" [info] Updating price for %s using user %s", symbol, user)
+		// log.Printf(" [info] Updating price for %s using user %s", symbol, user)
 
 		// Create a new quote request message:
 		price_request := CommandMessage{
@@ -227,7 +212,8 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 		price_request_json, err := json.Marshal(price_request)
 
 		if err != nil {
-			log.Panicf("[error] Failed to convert quote request to JSON: %s", err)
+			Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to convert quote request to JSON: %s", err))
+			panic(err)
 		}
 
 		err = rabbitmq_channel.PublishWithContext(
@@ -245,43 +231,11 @@ func refresh_trigger_stock_prices(trigger_redis *redis.Client, rabbitmq_channel 
 		)
 
 		if err != nil {
-			log.Panicf("[error] Failed to publish a message to the quote_price_requests queue: %s", err)
+			Log_error_event(CommandMessage{}, fmt.Sprintf("Failed to publish a message to the quote_price_requests queue: %s", err))
+			panic(err)
 		}
 		cancel()
 	}
-}
+	Log_debug_event(CommandMessage{}, fmt.Sprintf("Refreshed Stock Prices for %s", symbols))
 
-// RETRY FUNCTIONS:
-// Connect to RabbitMQ and retry if it fails
-func connect_rabbitmq() *amqp.Connection {
-	conn, err := amqp.Dial(RABBITMQ_CONNECTION_STRING)
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to connect to '%s', retrying in %d seconds", RABBITMQ_CONNECTION_STRING, TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		conn, err = amqp.Dial(RABBITMQ_CONNECTION_STRING)
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return conn
-}
-
-// Open a channel to communicate over and retry if it fails
-func open_channel(rabbit_connection *amqp.Connection) *amqp.Channel {
-	channel, err := rabbit_connection.Channel()
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to open a channel, retrying in %d seconds", TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		channel, err = rabbit_connection.Channel()
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return channel
 }

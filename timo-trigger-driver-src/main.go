@@ -6,25 +6,24 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"os"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	redis "github.com/redis/go-redis/v9"
 )
 
 // CONSTANTS:
 const MAX_CONNECTION_RETRIES = 5
 const TIME_BETWEEN_RETRIES_SECONDS = 5
-
-var REDIS_CONNECTION_ADDRESS = environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
-
 const REDIS_TIMEOUT_SECONDS = 3
 const REDIS_EXPIRY_SECONDS = 10
-
-var RABBITMQ_CONNECTION_STRING = environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
-
 const RABBITMQ_TIMEOUT_SECONDS = 5
+
+var HOSTNAME = Environment_variable_or_default("DOCKER_HOSTNAME", "TriggerDriver")
+var RABBITMQ_CONNECTION_STRING = Environment_variable_or_default("RABBITMQ_CONNECTION_STRING", "amqp://guest:guest@rabbitmq:5672/")
+var REDIS_CONNECTION_ADDRESS = Environment_variable_or_default("REDIS_CONNECTION_ADDRESS", "trigger-symbol-redis:6379")
+var MONGODB_CONNECTION_STRING = Environment_variable_or_default("MONGODB_CONNECTION_STRING", "mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority")
+
+var MONGO_CLIENT = Connect_mongodb()
 
 // FUNCTIONS:
 func main() {
@@ -40,10 +39,10 @@ func main() {
 	})
 
 	// Connect to RabbitMQ
-	rabbit_connection := connect_rabbitmq()
+	rabbit_connection := Connect_rabbitmq()
 	defer rabbit_connection.Close()
 	// Open a channel to communicate over
-	rabbitmq_channel := open_channel(rabbit_connection)
+	rabbitmq_channel := Open_rabbitmq_channel(rabbit_connection)
 	defer rabbitmq_channel.Close()
 
 	// Create a queue if it doesn't exist already to wait for quote price requests
@@ -58,7 +57,9 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to declare a queue: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to declare a queue")
+		panic(err)
+		// log.Panicf("Failed to declare a queue: %s", err)
 	}
 
 	// Use Quality of Service on the channel to limit the number of messages that can be in flight at once
@@ -70,7 +71,9 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to set QoS: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to set QoS")
+		panic(err)
+		// log.Panicf("Failed to set QoS: %s", err)
 	}
 
 	// Receive quote price requests through RabbitMQ by registering as a consumer
@@ -86,7 +89,9 @@ func main() {
 	)
 
 	if err != nil {
-		log.Panicf("Failed to register as consumer: %s", err)
+		Log_error_event(CommandMessage{}, "Failed to register as consumer")
+		panic(err)
+		// log.Panicf("Failed to register as consumer: %s", err)
 	}
 
 	var forever chan struct{}
@@ -103,27 +108,37 @@ func main() {
 			err := json.Unmarshal(message.Body, &command_message)
 
 			if err != nil {
-				log.Panicf(" [error] Failed to unmarshal message body: %s", err)
+				Log_error_event(command_message, "Failed to unmarshal message body")
+				panic(err)
+				// log.Panicf(" [error] Failed to unmarshal message body: %s", err)
 			}
 
-			log.Printf(" [info] Received trigger %s request from: %s for %s", command_message.Command, command_message.Userid, command_message.StockSymbol)
+			// log.Printf(" [info] Received trigger %s request from: %s for %s", command_message.Command, command_message.Userid, command_message.StockSymbol)
+			Log_debug_event(command_message, "Received trigger request")
 
 			if command_message.Command == "TRIGGER_ADD" {
 				// Add this user to the set of users subscribed to this symbol
 				_, err := redis_client.SAdd(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
+					Log_error_event(command_message, "Failed to add user to Redis set")
+					panic(err)
+					// log.Panicf(" [error] Failed to add %s to Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
 			} else if command_message.Command == "TRIGGER_REMOVE" {
 				// Remove this user from the set of users subscribed to this symbol
 				_, err := redis_client.SRem(timeout_context, command_message.StockSymbol, command_message.Userid).Result()
 
 				if err != nil {
-					log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
+					Log_error_event(command_message, "Failed to remove user from Redis set")
+					panic(err)
+					// log.Panicf(" [error] Failed to remove %s from Redis set %s with error: %s", command_message.Userid, command_message.StockSymbol, err)
 				}
 			} else {
-				log.Printf(" [warn] Received invalid command: %s in message: %+v", command_message.Command, command_message)
+				Log_error_event(command_message, "Received invalid command")
+				message.Reject(false) // Reject the message and don't requeue it
+				continue
+				// log.Printf(" [warn] Received invalid command: %s in message: %+v", command_message.Command, command_message)
 			}
 
 			// Acknowledge the message to remove it from the queue now that we have updated the database
@@ -132,50 +147,6 @@ func main() {
 	}()
 
 	log.Printf(" [info] Waiting for Trigger Subscription Requests. To exit press CTRL+C")
+	Log_debug_event(CommandMessage{}, "Trigger Driver Started")
 	<-forever // Block forever to keep the program running while waiting for RPC requests
-}
-
-// HELPERS:
-func environment_variable_or_default(key string, def string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists || value == "" {
-		log.Printf(" [warn] Environment variable %s does not exist, using default value: %s", key, def)
-		return def
-	}
-	return value
-}
-
-// RETRY FUNCTIONS:
-// Connect to RabbitMQ and retry if it fails
-func connect_rabbitmq() *amqp.Connection {
-	conn, err := amqp.Dial(RABBITMQ_CONNECTION_STRING)
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to connect to '%s', retrying in %d seconds", RABBITMQ_CONNECTION_STRING, TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		conn, err = amqp.Dial(RABBITMQ_CONNECTION_STRING)
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return conn
-}
-
-// Open a channel to communicate over and retry if it fails
-func open_channel(rabbit_connection *amqp.Connection) *amqp.Channel {
-	channel, err := rabbit_connection.Channel()
-
-	for i := 0; i < MAX_CONNECTION_RETRIES && err != nil; i++ {
-		log.Printf("Failed to open a channel, retrying in %d seconds", TIME_BETWEEN_RETRIES_SECONDS)
-		time.Sleep(TIME_BETWEEN_RETRIES_SECONDS * time.Second)
-		channel, err = rabbit_connection.Channel()
-	}
-
-	if err != nil {
-		log.Panicf("Failed to connect to '%s' after %d retries", RABBITMQ_CONNECTION_STRING, MAX_CONNECTION_RETRIES)
-	}
-
-	return channel
 }
