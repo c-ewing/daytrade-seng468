@@ -139,29 +139,15 @@ services:
     profiles:
       - production
 
-  transaction-server:
-    build:
-      context: .
-      dockerfile: ./timo-transaction-server-docker/transaction_server_dockerfile
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      quote-driver:
-        condition: service_started
-    environment:
-      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672
-      - MONGODB_CONNECTION_STRING=mongodb://root:example@mongodb:27017/?retryWrites=true&w=majority
-    profiles:
-      - production
-
   web-interface:
     build:
       context: ./timo-web-interface/
       dockerfile: web_dockerfile
     ports:
       - 80:80
+    depends_on:
+      web-server:
+        condition: service_healthy
     profiles:
       - production
 
@@ -169,8 +155,22 @@ services:
     build:
       context: ./timo-web-server/
       dockerfile: web_server_dockerfile
+    restart: on-failure
     ports:
       - 8080:8080
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail http://localhost:8080 || exit 1"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     profiles:
       - production
 
@@ -294,6 +294,85 @@ services:
     profiles:
       - dev
 
+    nginx-load-balancer:
+      restart: "on-failure"
+      build:
+        context: ./nginx
+        dockerfile: nginx_dockerfile
+      depends_on:
+        - web-interface1-dev
+        - web-interface2-dev
+        - web-interface3-dev
+      ports:
+        - 5200:5200
+      profiles:
+        - dev
+
+  web-server-dev:
+    build:
+      context: ./timo-web-server/
+      dockerfile: web_server_dockerfile
+    restart: on-failure
+    depends_on:
+      rabbitmq-dev:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail http://localhost:8080 || exit 1"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    ports:
+      - 8080:8080
+    profiles:
+      - dev
+
+  web-interface1-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    depends_on:
+      web-server-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: on-failure
+    environment:
+      - PORT=3001
+      - SERVICE_NAME=web-interface1-dev
+
+  web-interface2-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    depends_on:
+      web-server-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: on-failure
+    environment:
+      - PORT=3002
+      - SERVICE_NAME=web-interface2-dev
+
+  web-interface3-dev:
+    build:
+      context: ./timo-web-interface/
+      dockerfile: web_dockerfile
+    depends_on:
+      web-server-dev:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: on-failure
+    environment:
+      - PORT=3003
+      - SERVICE_NAME=web-interface3-dev
+
   stock-watcher-dev:
     build:
       context: . # In order to be able to access files in the "timo-trigger-driver-source" directory we have to move the context up one directory
@@ -326,27 +405,5 @@ services:
     environment:
       - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq-dev:5672
       - MONGODB_CONNECTION_STRING=mongodb+srv://cameron:cameronPassword@cluster0.l6nglby.mongodb.net/?retryWrites=true&w=majority
-    profiles:
-      - dev
-
-  web-interface-dev:
-    build:
-      context: ./timo-web-interface/
-      dockerfile: web_dockerfile
-    ports:
-      - 80:80
-    depends_on:
-      - transaction-server-dev
-    profiles:
-      - dev
-
-  web-server-dev:
-    build:
-      context: ./timo-web-server/
-      dockerfile: web_server_dockerfile
-    ports:
-      - 8080:8080
-    depends_on:
-      - transaction-server-dev
     profiles:
       - dev
