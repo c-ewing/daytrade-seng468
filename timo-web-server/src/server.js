@@ -83,7 +83,7 @@ const sendToRabbit = (data) => {
           channel.consume(acknowledgmentQueue, (msg) => {
             console.log(`Received acknowledgment: ${msg.content.toString()}`);
             // Do something with the acknowledgment message
-          }, { noAck: true });
+          }, { noAck: false });
         });
       }
     });
@@ -105,12 +105,13 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Operation File received
 app.post('/send-data', configuredCors, (req, res) => {
+  var startTime = new Date();
   const data = req.body.data;
   const operations = data.split("\r\n");
   // Remove last empty line 
   operations.pop();
   for (var i = 0; i < operations.length; i++) operations[i] = formatOperation(operations[i]);
-  var startTime = new Date();
+  
   var numAcks = operations.length;
   sendToRabbit(operations);
   var endTime = new Date();

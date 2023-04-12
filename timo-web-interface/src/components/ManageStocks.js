@@ -79,7 +79,7 @@ function ManageStocks (props) {
                 </div>
                 <div className='sellStock' style={{ display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
                     {canBuy && <SellStock stockSym={stockSym} stockPrice={stockPrice} username={props.username}
-                                        accountBalance={props.accountBalance} setBalance={props.setBalance} shares={6}/>}
+                                        accountBalance={props.accountBalance} setBalance={props.setBalance} shares={50}/>}
                 </div>
             </div>
             

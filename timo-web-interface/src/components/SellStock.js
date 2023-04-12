@@ -40,8 +40,8 @@ function SellStock (props) {
         // Update account balance
         // Update database TODO
         const fullPrice = numShares * parseFloat(props.stockPrice);
-        alert(`Sold ${numShares} shares of ${props.stockSym} at $ ${props.stockPrice}`)
-        const newBalance = props.accountBalance + fullPrice;
+        alert(`Sold ${numShares} shares of ${props.stockSym} at $ ${props.stockPrice}. ${fullPrice}`);
+        const newBalance = parseFloat(props.accountBalance) + parseFloat(fullPrice);
         props.setBalance(newBalance.toFixed(2));
     }
 
