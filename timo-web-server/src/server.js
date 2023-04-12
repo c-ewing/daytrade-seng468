@@ -54,27 +54,43 @@ const formatOperation = (data) => {
 const sendToRabbit = (data) => {
   amqp.connect(rabbitConnect, (err, conn) => {
     if (err) throw err;
-    console.log("Successfully conected to rabbit on: ", rabbitConnect);
+    console.log("Successfully connected to RabbitMQ on: ", rabbitConnect);
 
     conn.createChannel((err, channel) => {
       if (err) throw err;
-      
+
+      // Create a new queue for acknowledgments
+      const acknowledgmentQueue = 'acknowledgment_queue';
+      channel.assertQueue(acknowledgmentQueue);
+
+      // Bind the acknowledgment queue to the exchange
+      const exchange = 'ack_exchange';
+      channel.assertExchange(exchange, 'direct', { durable: true });
+
+      const routingKey = 'your_routing_key';
+      channel.bindQueue(acknowledgmentQueue, exchange, routingKey);
+
       channel.assertQueue(commandQueue);
       console.log("Successfully connected to: ", commandQueue);
       channel.prefetch(10);
+
       for (var i = 0; i < data.length; i++) {
         channel.sendToQueue(commandQueue, Buffer.from(JSON.stringify(data[i])), {mandatory:true}, (sendErr, ok) => {
           if (sendErr) throw sendErr;
           console.log("Sent operation");
-          // channel.waitForConfirms((confirmErr) => {
-          //   if (confirmErr) throw confirmErr;
-          //   console.log('All messages confirmed: ', data[i]);
-          // });
+
+          // Set up a consumer to receive acknowledgments
+          channel.consume(acknowledgmentQueue, (msg) => {
+            console.log(`Received acknowledgment: ${msg.content.toString()}`);
+            // Do something with the acknowledgment message
+          }, { noAck: false });
         });
       }
     });
   });
 }
+
+
 
 const corsOptions = {
   origin: true
@@ -89,12 +105,19 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Operation File received
 app.post('/send-data', configuredCors, (req, res) => {
+  var startTime = new Date();
   const data = req.body.data;
   const operations = data.split("\r\n");
   // Remove last empty line 
   operations.pop();
   for (var i = 0; i < operations.length; i++) operations[i] = formatOperation(operations[i]);
+  
+  var numAcks = operations.length;
   sendToRabbit(operations);
+  var endTime = new Date();
+  var timeDif = endTime - startTime;
+  var TPS = (numAcks/timeDif) * 1000;
+  console.log(`Operations took ${timeDif} ms: TPS = ${TPS}`)
 }
 );
 

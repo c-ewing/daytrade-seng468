@@ -22,18 +22,18 @@ function AddFunds(props) {
         
         var operation = `[1] ADD,${props.username},${parseFloat(inputValue)}`;
 
-        fetch('http://localhost:8080/send-data', {
+        // fetch('http://localhost:8080/send-data', {
 
-        headers: {
-            'Content-Type': 'application/json;charset=UTF-8'
-            },
-            method: 'POST',
-            body: JSON.stringify({data: operation})
-        }).then(function(response) {
-            console.log(response.body)
-        }).catch(error => {
-            console.error(error);
-        });
+        // headers: {
+        //     'Content-Type': 'application/json;charset=UTF-8'
+        //     },
+        //     method: 'POST',
+        //     body: JSON.stringify({data: operation})
+        // }).then(function(response) {
+        //     console.log(response.body)
+        // }).catch(error => {
+        //     console.error(error);
+        // });
 
     };
 
