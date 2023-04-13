@@ -294,19 +294,19 @@ services:
     profiles:
       - dev
 
-    nginx-load-balancer:
-      restart: "on-failure"
-      build:
-        context: ./nginx
-        dockerfile: nginx_dockerfile
-      depends_on:
-        - web-interface1-dev
-        - web-interface2-dev
-        - web-interface3-dev
-      ports:
-        - 5200:5200
-      profiles:
-        - dev
+  nginx-load-balancer:
+    restart: "on-failure"
+    build:
+      context: ./nginx
+      dockerfile: nginx_dockerfile
+    depends_on:
+      - web-interface1-dev
+      - web-interface2-dev
+      - web-interface3-dev
+    ports:
+      - 5200:5200
+    profiles:
+      - dev
 
   web-server-dev:
     build:
